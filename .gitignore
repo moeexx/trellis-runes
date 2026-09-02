@@ -1,2 +1,7 @@
 # 嵌套的 Trellis 源码快照——仅参考，不属于本仓库，防 git add -A 误纳为 gitlink
 /Trellis/
+
+# 通用运行时产物（tests/、根级 hooks 等 Python 脚本生成的字节码与测试缓存）
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
