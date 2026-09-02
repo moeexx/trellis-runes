@@ -1,8 +1,4 @@
-# 开发工作流（精简汉化版）
-
-> 本文档是 `.trellis/workflow.md` 的中文精简版，聚焦开发任务实操，是运行时的工作流依据。
-> 完整英文原文（含 fork 定制、解析器/契约 meta、平台专属重复块、Codex 内联变体、
-> workspace 会话日志等精简掉的内容）见 `docs/workflow-backup.md`。
+# 开发工作流
 
 ## 核心原则
 
@@ -13,16 +9,6 @@
 5. **沉淀收获** —— 每个任务结束后，回顾并把新知识写回 spec
 
 ## Trellis 系统
-
-### 开发者身份
-
-首次使用初始化身份：
-
-```bash
-python3 ./.trellis/scripts/init_developer.py <your-name>
-```
-
-创建 `.trellis/.developer`（gitignored）+ `.trellis/workspace/<your-name>/`。不初始化身份时 `task.py start` 无法设置激活任务。
 
 ### Spec 系统
 
@@ -47,7 +33,7 @@ python3 ./.trellis/scripts/task.py archive <name>        # 移到 archive/{year-
 python3 ./.trellis/scripts/task.py list [--mine] [--status <s>]
 
 # 子代理上下文 manifest（每行 {"file": "<path>", "reason": "<why>"}，路径相对仓库根）
-# implement.jsonl / check.jsonl 建任务时预置空种子；仍为空时 validate 失败、start 拒绝。
+# implement.jsonl / check.jsonl 由任务创建时按平台预置；现有文件由中央 gate 校验。
 python3 ./.trellis/scripts/task.py add-context <name> <action> <file> <reason>
 python3 ./.trellis/scripts/task.py list-context <name> [action]
 python3 ./.trellis/scripts/task.py validate <name>
@@ -117,10 +103,9 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 [/workflow-state:task_error]
 
 [workflow-state:planning]
-加载 `trellis-brainstorm`，保持规划状态。
-轻量任务：`prd.md` 即可。复杂任务：完成 `prd.md`、`design.md`、`implement.md`；在 `task.py start` 之前请用户评审。
+完成规划并请求用户评审。准备进入实现时运行 `python3 ./.trellis/scripts/task.py start <task-dir>`；命令会执行中央 gate。
+若 gate 失败，只修复返回的失败项后重试；未通过前保持 planning。
 多交付物范围：考虑父任务加若干可独立验证的子任务；依赖写进子任务产物，而非靠树结构位置暗示。
-子代理模式：在 start 前把 `implement.jsonl` / `check.jsonl` 策划好。
 [/workflow-state:planning]
 
 [workflow-state:in_progress]
@@ -136,7 +121,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 - 1.1 需求探索 `[required · repeatable]`（`prd.md`；复杂任务还需 `design.md` + `implement.md`）
 - 1.2 研究 `[optional · repeatable]`
 - 1.3 配置上下文 `[required · once]`（子代理分发平台；内联平台跳过）
-- 1.4 激活任务 `[required · once]`（评审关卡，然后 `task.py start`；status → in_progress）
+- 1.4 激活任务 `[required · once]`（评审后运行 `task.py start`；central gate 通过后 status → in_progress）
 - 1.5 完成标准
 
 ### Phase 2：执行（Execute）
@@ -173,7 +158,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 ### 护栏
 
 - 创建任务许可 ≠ 实现许可；实现等产物评审后 `task.py start`。
-- 只有 PRD 对轻量任务有效；复杂任务需要 `design.md` + `implement.md`。
+- 复杂任务的 `design.md` + `implement.md` 判断仍由规划流程负责；确定性前置条件由 `task.py start` 的 central gate 执行。
 - 规划必须落盘到任务产物；报告完成前必须先运行检查。
 
 ### 加载步骤详情
@@ -233,7 +218,7 @@ python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
 
 发现相关 spec 用 `python3 ./.trellis/scripts/get_context.py --mode packages`；追加条目直接编辑文件或用 `task.py add-context "$TASK_DIR" implement|check "<path>" "<reason>"`。
 
-就绪门槛：两个文件在 `task.py start` 前各含至少一条真实条目（种子 `_example` 行不算）。
+上下文文件由 `task.py start` 的 central gate 校验；失败时按命令返回的具体项修复。
 
 #### 1.4 激活任务 `[required · once]`
 
@@ -241,7 +226,7 @@ python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
 python3 ./.trellis/scripts/task.py start <task-dir>
 ```
 
-轻量任务 `prd.md` 即可；复杂任务三件套必须存在并评审过；子代理分发平台两个 jsonl 必须有真实条目。若报会话身份错误，按提示设置会话身份后重试。
+规划产物完成并评审后运行命令；确定性失败按 gate 返回结果修复。若报会话身份错误，按提示设置会话身份后重试。
 
 #### 1.5 完成标准
 
@@ -250,10 +235,9 @@ python3 ./.trellis/scripts/task.py start <task-dir>
 | 存在 `prd.md` | ✅ |
 | 用户确认任务进入实现 | ✅ |
 | 已运行 `task.py start`（status = in_progress） | ✅ |
-| 两个 jsonl 各含至少一条真实条目（子代理分发平台） | ✅ |
-| `research/` 有产物（复杂任务） | 建议 |
-| 存在 `design.md`（复杂任务） | ✅ |
-| 存在 `implement.md`（复杂任务） | ✅ |
+| `task.py start` central gate 通过 | ✅ |
+| `research/` 有产物（复杂任务） | 由规划流程判断 |
+| 存在 `design.md` / `implement.md`（复杂任务） | 由规划流程判断 |
 
 ---
 
