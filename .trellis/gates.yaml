@@ -1,0 +1,25 @@
+version: 1
+
+gates:
+  task_start:
+    transition:
+      from: planning
+      to: in_progress
+      idempotent: true
+    require:
+      - task_json_ready
+      - planning_artifacts_ready
+      - context_ready
+
+  context_validate:
+    require:
+      - context_ready
+
+  task_archive:
+    transition:
+      from: in_progress
+      to: completed
+    require:
+      - task_json_ready
+      - archive_branch_metadata
+      - archive_destination_available

@@ -16,7 +16,7 @@ Usage:
     python3 task.py set-scope <dir> <scope>     # Set scope for PR title
     python3 task.py set-meta <dir> <key> <value>  # Set a task metadata key
     python3 task.py rename <dir> <new-slug> [--dry-run]  # Rename task + references
-    python3 task.py archive <task-dir> [--skip-branch-validation]  # Archive completed task
+    python3 task.py archive <task-dir>  # Archive completed task
     python3 task.py list                        # List active tasks
     python3 task.py list-archive [month]        # List archived tasks
     python3 task.py add-subtask <parent-dir> <child-dir>     # Link child to parent
@@ -47,6 +47,8 @@ from common.active_task import (
     resolve_context_key,
     set_active_task,
 )
+from common.gate import GateContext
+from common import gate
 from common.git import current_branch_name
 from common.io import (
     describe_json_read_failure,
@@ -72,7 +74,6 @@ from common.task_context import (
     cmd_add_context,
     cmd_validate,
     cmd_list_context,
-    curated_entry_count,
 )
 
 
@@ -84,7 +85,7 @@ def _record_start_state(
     task_json_path: Path,
     repo_root: Path,
     label: str = "",
-) -> None:
+) -> bool:
     """Move a freshly started task to in_progress and record its branch.
 
     Both updates share one read/write: the status flip from planning, and the
@@ -92,20 +93,19 @@ def _record_start_state(
     keeps `branch` trustworthy at archive time — a task whose branch is only
     ever set by hand tends to reach archive with `branch: null`.
 
-    Tolerant on purpose — a broken task.json does not fail `start`, because the
-    session pointer is the point of the command. But the read overwrites the
-    file it just read, so no failure may be silent: without a message the
-    absent status line looks like the task simply was not in planning.
+    Gate evaluation happens before this function. A broken task.json or write
+    failure is still a hard command failure here so a successful `start` can
+    never claim a transition that was not persisted.
     """
     data, reason = read_json_checked(task_json_path)
     if data is None:
         problem, hint = describe_json_read_failure(task_json_path, reason)
         print(
-            colored(f"Warning: {problem}; task.json not updated.", Colors.YELLOW),
+            colored(f"Error: {problem}; task.json not updated.", Colors.RED),
             file=sys.stderr,
         )
         print(hint, file=sys.stderr)
-        return
+        return False
 
     applied: list[str] = []
 
@@ -134,18 +134,18 @@ def _record_start_state(
             )
 
     if not applied:
-        return
+        return True
 
     if not write_json(task_json_path, data):
         print(
             colored(
-                f"Warning: Failed to write {task_json_path}; "
+                f"Error: Failed to write {task_json_path}; "
                 "status and branch are unchanged.",
-                Colors.YELLOW,
+                Colors.RED,
             ),
             file=sys.stderr,
         )
-        return
+        return False
 
     for line in applied:
         print(colored(line, Colors.GREEN))
@@ -166,6 +166,7 @@ def _record_start_state(
             "set-branch <task> <feature-branch>",
             file=sys.stderr,
         )
+    return True
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -191,28 +192,18 @@ def cmd_start(args: argparse.Namespace) -> int:
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.trellis/tasks/01-31-my-task')")
         return 1
 
-    # Context-manifest gate (#573): a seeded-but-uncurated implement/check
-    # manifest means every sub-agent dispatched for this task runs with zero
-    # spec context, and nothing downstream surfaces that to the main session.
-    # An absent manifest is not gated — create seeds the files only on
-    # sub-agent-capable platforms, so absence means no sub-agent reads them.
-    if not getattr(args, "allow_empty_context", False):
-        empty_manifests = [
-            name
-            for name in ("implement.jsonl", "check.jsonl")
-            if curated_entry_count(full_path / name) == 0
-        ]
-        if empty_manifests:
-            print(colored(
-                f"Error: {' and '.join(empty_manifests)} "
-                f"{'has' if len(empty_manifests) == 1 else 'have'} no curated entries",
-                Colors.RED,
-            ))
-            print("Sub-agents (implement/check) would run with zero spec context.")
-            print(f"  Curate:  python3 .trellis/scripts/task.py add-context {task_input} implement <path> \"<why>\"")
-            print(f"  Verify:  python3 .trellis/scripts/task.py validate {task_input}")
-            print("  Intentionally empty? Re-run start with --allow-empty-context")
-            return 1
+    task_json_path = full_path / FILE_TASK_JSON
+    if not gate.require(
+        "task_start",
+        GateContext(repo_root=repo_root, task_dir=full_path),
+    ):
+        return 1
+
+    # Keep the gate and the protected status transition adjacent. Session
+    # pointer and lifecycle hooks are side effects that happen only after the
+    # transition has been durably written.
+    if not _record_start_state(task_json_path, repo_root):
+        return 1
 
     # Convert to relative path for storage. repo_root is resolved because
     # full_path already is (resolve_task_dir only returns paths inside the
@@ -229,8 +220,6 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(colored(f"Error: Task not found: {task_input}", Colors.RED))
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.trellis/tasks/01-31-my-task')")
         return 1
-
-    task_json_path = full_path / FILE_TASK_JSON
 
     if not resolve_context_key():
         # Degraded mode: no session identity available.
@@ -249,18 +238,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         ))
 
         # Still flip task.json status: planning → in_progress so downstream phases proceed.
-        if task_json_path.is_file():
-            _record_start_state(task_json_path, repo_root, " (degraded)")
-            run_task_hooks("after_start", task_json_path, repo_root)
+        run_task_hooks("after_start", task_json_path, repo_root)
         return 0
 
     active = set_active_task(task_dir, repo_root)
     if active:
         print(colored(f"✓ Current task set to: {task_dir}", Colors.GREEN))
         print(f"Source: {active.source}")
-
-        if task_json_path.is_file():
-            _record_start_state(task_json_path, repo_root)
 
         print()
         print(colored("The hook will now inject context from this task's jsonl files.", Colors.BLUE))
@@ -556,14 +540,6 @@ Rename options:
 
 Archive options:
   --no-commit                Skip the auto git commit after archiving
-  --skip-branch-validation   Archive despite missing or self-referential branch metadata.
-                             Archive normally refuses a task with no `branch` when it has a
-                             `base_branch` and the repo has a remote, or with
-                             `branch == base_branch`; repair those with `set-branch` /
-                             `set-base-branch` instead. Use this flag only for tasks that
-                             were never PR-backed. A recorded branch that was merged and
-                             deleted is only a warning and needs no flag.
-
 List options:
   --mine, -m           Show only tasks assigned to current developer
   --status, -s <s>     Filter by status (planning, in_progress, review, completed)
@@ -582,7 +558,7 @@ Examples:
   python3 task.py rename add-login add-sso --dry-run  # Preview the change set
   python3 task.py rename add-login add-sso
   python3 task.py archive add-login
-  python3 task.py archive add-login --skip-branch-validation  # Task never had a branch of its own
+  python3 task.py archive add-login
   python3 task.py add-subtask parent-task child-task  # Link existing tasks
   python3 task.py remove-subtask parent-task child-task
   python3 task.py list                               # List all active tasks
@@ -684,12 +660,6 @@ def main() -> int:
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
-    p_start.add_argument(
-        "--allow-empty-context",
-        action="store_true",
-        help="Start even when implement.jsonl / check.jsonl have no curated entries",
-    )
-
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
     p_current.add_argument("--source", action="store_true",
@@ -735,14 +705,6 @@ def main() -> int:
     p_archive = subparsers.add_parser("archive", help="Archive task")
     p_archive.add_argument("name", help="Task directory or name")
     p_archive.add_argument("--no-commit", action="store_true", help="Skip auto git commit after archive")
-    p_archive.add_argument(
-        "--skip-branch-validation",
-        action="store_true",
-        help=(
-            "Archive even when branch metadata is missing or self-referential "
-            "(for tasks that were never PR-backed)"
-        ),
-    )
 
     # list
     p_list = subparsers.add_parser("list", help="List tasks")

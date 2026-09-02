@@ -26,6 +26,8 @@ import json
 from pathlib import Path
 
 from .config import get_context_injection_limits
+from .gate import GateContext
+from . import gate
 from .git import branch_exists_locally
 from .io import read_json
 from .log import Colors, colored
@@ -125,34 +127,6 @@ def cmd_add_context(args: argparse.Namespace) -> int:
 # Command: validate
 # =============================================================================
 
-def curated_entry_count(jsonl_file: Path) -> int | None:
-    """Count curated entries in a jsonl context manifest.
-
-    Returns None when the file does not exist — `task.py create` seeds the
-    manifests only on sub-agent-capable platforms, so an absent file means no
-    sub-agent will ever read it and callers should not gate on it. A curated
-    entry is a JSON object row carrying a truthy ``file`` (or legacy ``path``)
-    value: the same rows the sub-agent injection hook materializes.
-    """
-    if not jsonl_file.is_file():
-        return None
-    try:
-        lines = jsonl_file.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return 0
-    count = 0
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(data, dict) and (data.get("file") or data.get("path")):
-            count += 1
-    return count
-
 
 def cmd_validate(args: argparse.Namespace) -> int:
     """Validate JSONL context files."""
@@ -183,18 +157,20 @@ def cmd_validate(args: argparse.Namespace) -> int:
             )
             print()
 
-    total_errors = 0
+    gate_result = gate.require(
+        "context_validate",
+        GateContext(repo_root=repo_root, task_dir=target_dir),
+    )
     for jsonl_name in ["implement.jsonl", "check.jsonl"]:
         jsonl_file = target_dir / jsonl_name
-        errors = _validate_jsonl(jsonl_file, repo_root, target_dir)
-        total_errors += errors
+        _validate_jsonl(jsonl_file, repo_root, target_dir)
 
     print()
-    if total_errors == 0:
+    if gate_result.ok:
         print(colored("✓ All validations passed", Colors.GREEN))
         return 0
     else:
-        print(colored(f"✗ Validation failed ({total_errors} errors)", Colors.RED))
+        print(colored("✗ Validation failed (central context gate)", Colors.RED))
         return 1
 
 
@@ -268,21 +244,13 @@ def _resolve_context_entry_path(
 
 
 def _validate_jsonl(jsonl_file: Path, repo_root: Path, task_dir: Path | None = None) -> int:
-    """Validate a single JSONL file.
+    """Print non-blocking context hygiene warnings for one JSONL file.
 
-    ``{"_example": ...}`` placeholder rows written by older Trellis versions
-    are hard errors: PR preflight rejects them as unresolved scaffolding, so
-    accepting them here would pass locally and fail later. Other rows without
-    a ``file`` field are skipped silently, matching what consumers do.
-
-    Beyond hard errors (missing file/dir, invalid JSON), this also prints
-    non-blocking hygiene warnings (never counted in ``errors``, never change
-    the exit code): entries that look like code files rather than
-    spec/research docs, and entries whose file size exceeds the configured
-    sub-agent context injection cap (``context_injection.max_file_bytes``).
+    Blocking validation is owned by ``gate.context_ready``. This function only
+    preserves the existing advisory warnings for code paths and oversized
+    injected files, plus the compact entry count display.
     """
     file_name = jsonl_file.name
-    errors = 0
 
     if not jsonl_file.is_file():
         print(f"  {colored(f'{file_name}: not found (skipped)', Colors.YELLOW)}")
@@ -297,65 +265,42 @@ def _validate_jsonl(jsonl_file: Path, repo_root: Path, task_dir: Path | None = N
 
     max_file_bytes = get_context_injection_limits(repo_root).get("max_file_bytes", 0)
 
-    line_num = 0
     real_entries = 0
-    for line in jsonl_file.read_text(encoding="utf-8").splitlines():
-        line_num += 1
+    try:
+        lines = jsonl_file.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        print(f"  {colored(f'{file_name}: advisories unavailable', Colors.YELLOW)}")
+        return 0
+
+    for line_num, line in enumerate(lines, 1):
         if not line.strip():
             continue
 
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
-            print(f"  {colored(f'{file_name}:{line_num}: Invalid JSON', Colors.RED)}")
-            errors += 1
             continue
 
         if not isinstance(data, dict):
-            print(
-                f"  {colored(f'{file_name}:{line_num}: Expected a JSON object', Colors.RED)}"
-            )
-            errors += 1
             continue
 
         if "_example" in data:
-            error_message = (
-                f"{file_name}:{line_num}: Placeholder `_example` row left by an older "
-                "task.py create — delete this line, or replace it with "
-                '{"file": "<path>", "reason": "<why>"}'
-            )
-            print(f"  {colored(error_message, Colors.RED)}")
-            errors += 1
             continue
 
-        file_path = data.get("file")
+        file_path = data.get("file") or data.get("path")
         entry_type = data.get("type", "file")
 
         if not file_path:
-            # Comment / unknown row without a path — skip silently
             continue
 
         if not isinstance(file_path, str):
-            # A truthy non-string (e.g. {"file": 1}) reached path joining and
-            # raised TypeError, so validation crashed on the row it exists to
-            # report.
-            print(
-                f"  {colored(f'{file_name}:{line_num}: `file` must be a string path', Colors.RED)}"
-            )
-            errors += 1
             continue
 
         real_entries += 1
         full_path = _resolve_context_entry_path(file_path, repo_root, task_dir)
-        if entry_type == "directory":
-            if full_path is None or not full_path.is_dir():
-                print(f"  {colored(f'{file_name}:{line_num}: Directory not found: {file_path}', Colors.RED)}")
-                errors += 1
-            continue
-
-        if full_path is None or not full_path.is_file():
-            print(f"  {colored(f'{file_name}:{line_num}: File not found: {file_path}', Colors.RED)}")
-            errors += 1
+        if full_path is None or (
+            full_path.is_dir() if entry_type == "directory" else full_path.is_file()
+        ) is False:
             continue
 
         extension = Path(file_path).suffix.lower()
@@ -385,28 +330,11 @@ def _validate_jsonl(jsonl_file: Path, repo_root: Path, task_dir: Path | None = N
                 )
                 print(f"  {colored(warning_message, Colors.YELLOW)}")
 
-    if errors == 0 and real_entries == 0:
-        # Seed-only / empty manifest: sub-agents dispatched for this task
-        # would run with zero spec context (#573). Silent-green here is how
-        # more than half the tasks in the report ended up uncurated.
-        action = file_name.split(".", 1)[0]
-        print(
-            f"  {colored(f'{file_name}: ✗ (0 curated entries — sub-agents would get zero spec context)', Colors.RED)}"
-        )
-        print(
-            f"    Curate it:  python3 .trellis/scripts/task.py add-context <task> {action} <path> \"<why>\""
-        )
-        print(
-            "    Intentionally empty? Bypass at start: task.py start <task> --allow-empty-context"
-        )
-        return 1
-
-    if errors == 0:
+    if real_entries:
         print(f"  {colored(f'{file_name}: ✓ ({real_entries} entries)', Colors.GREEN)}")
     else:
-        print(f"  {colored(f'{file_name}: ✗ ({errors} errors)', Colors.RED)}")
-
-    return errors
+        print(f"  {colored(f'{file_name}: no curated entries', Colors.YELLOW)}")
+    return 0
 
 
 # =============================================================================

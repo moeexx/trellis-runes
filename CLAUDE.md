@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `.trellis/workflow.md` 是精简汉化版工作流文档（聚焦开发任务实操），由 hooks 自动注入（已生效）。
 - `docs/workflow-backup.md` 是完整英文原文备份，含精简掉的内容（fork 定制、解析器/契约 meta、平台专属块、Codex 内联变体、workspace 会话日志）；需要这些细节时再查看，**默认不阅读**。
+- `docs/gates.md` 是 Central Gate（门禁）体系文档：`task.py start/validate/archive` 的确定性前置条件如何新增、修改与测试；改动任何门禁前先读它。
 
 ## 工作区概览
 

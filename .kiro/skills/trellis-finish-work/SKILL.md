@@ -5,7 +5,7 @@ description: "Wrap up the current session: verify quality gate passed, remind us
 
 # Finish Work
 
-Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
+Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here (workflow Phase 3.4). Archive runs the central completion gate (fix reported failures and retry).
 
 ## Step 1: Survey current state
 

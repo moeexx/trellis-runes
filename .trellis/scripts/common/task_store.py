@@ -6,7 +6,7 @@ Provides:
     ensure_tasks_dir   - Ensure tasks directory exists
     cmd_create         - Create a new task
     cmd_rename         - Rename a task and every reference to it
-    cmd_archive        - Archive completed task
+    cmd_archive        - Archive task after the central completion gate
     cmd_set_branch     - Set git branch for task
     cmd_set_base_branch - Set PR target branch
     cmd_set_scope      - Set scope for PR title
@@ -34,8 +34,6 @@ from .config import (
 )
 from .git import (
     INDEX_LOCK_RETRY_ATTEMPTS,
-    branch_exists_locally,
-    has_git_remote,
     index_lock_path,
     resolve_default_branch,
     run_git,
@@ -43,6 +41,8 @@ from .git import (
     stderr_indicates_index_lock,
 )
 from .io import describe_json_read_failure, read_json_checked, write_json
+from .gate import GateContext
+from . import gate
 from .log import Colors, colored
 from .paths import (
     DEVELOPER_HINT,
@@ -61,7 +61,6 @@ from .safe_commit import (
     safe_git_add,
 )
 from .task_utils import (
-    archive_destination_for,
     archive_task_complete,
     find_task_by_name,
     is_within_tasks_dir,
@@ -1134,94 +1133,8 @@ def cmd_rename(args: argparse.Namespace) -> int:
 # Command: archive
 # =============================================================================
 
-def _task_branch_field(data: dict, key: str) -> str:
-    """Read a branch field as a trimmed string ("" when unset or not a string)."""
-    value = data.get(key)
-    return strip_blank(value) if isinstance(value, str) else ""
-
-
-def _validate_branch_metadata(
-    data: dict,
-    task_name: str,
-    repo_root: Path,
-    skip: bool,
-) -> bool:
-    """Check branch metadata before the task leaves the active tree.
-
-    Returns False when archiving must stop. Archive is the last gate that sees
-    a task, so metadata nobody can reconstruct afterwards is refused here
-    rather than repaired by hand later (#399 follow-up).
-
-    "PR-backed" is deliberately pragmatic: a task carrying a base_branch in a
-    repo that has a remote was created expecting a PR, so a missing `branch`
-    means the metadata was never recorded — not that the work had no branch.
-    Local-only repos and tasks without a base_branch are left alone.
-
-    A recorded branch that no longer exists locally stays a warning: after a
-    merge the feature branch is normally deleted, and refusing to archive then
-    would be backwards.
-    """
-    branch = _task_branch_field(data, "branch")
-    base_branch = _task_branch_field(data, "base_branch")
-    task_py = f"python3 {DIR_WORKFLOW}/scripts/task.py"
-
-    if branch and not branch_exists_locally(branch, repo_root):
-        print(
-            colored(
-                f"Warning: recorded branch '{branch}' no longer exists locally "
-                "(likely merged and deleted).",
-                Colors.YELLOW,
-            ),
-            file=sys.stderr,
-        )
-
-    if skip:
-        return True
-
-    if branch and base_branch and branch == base_branch:
-        print(
-            colored(
-                f"Error: refusing to archive '{task_name}': branch and base_branch "
-                f"are both '{branch}'. A PR cannot target its own branch, so this "
-                "metadata cannot describe the work that was merged.",
-                Colors.RED,
-            ),
-            file=sys.stderr,
-        )
-        print("Repair whichever field is wrong:", file=sys.stderr)
-        print(f"  {task_py} set-branch {task_name} <feature-branch>", file=sys.stderr)
-        print(f"  {task_py} set-base-branch {task_name} <target-branch>", file=sys.stderr)
-        print(
-            f"  {task_py} archive {task_name} --skip-branch-validation"
-            "   # only if this task was never PR-backed",
-            file=sys.stderr,
-        )
-        return False
-
-    if not branch and base_branch and has_git_remote(repo_root):
-        print(
-            colored(
-                f"Error: refusing to archive '{task_name}': no branch is recorded, "
-                f"but the task targets base_branch '{base_branch}' in a repo with a "
-                "remote — the branch it was built on was never written down.",
-                Colors.RED,
-            ),
-            file=sys.stderr,
-        )
-        print("Repair with:", file=sys.stderr)
-        print(f"  {task_py} set-branch {task_name} <branch>", file=sys.stderr)
-        print(
-            f"  {task_py} archive {task_name} --skip-branch-validation"
-            "   # only if the work landed without a branch of its own",
-            file=sys.stderr,
-        )
-        return False
-
-    return True
-
-
 def cmd_archive(args: argparse.Namespace) -> int:
-    """Archive completed task."""
+    """Archive an in-progress task after the central completion gate."""
     repo_root = get_repo_root()
     task_name = args.name
 
@@ -1262,120 +1175,88 @@ def cmd_archive(args: argparse.Namespace) -> int:
             Colors.RED), file=sys.stderr)
         return 1
 
-    # Check the destination before anything below mutates task state. The
-    # mover refuses a collision too, but by then this command has already
-    # marked the task completed, re-parented its children and cleared the
-    # sessions pointing at it — all of which would have to be undone by hand.
-    archive_dest_check = archive_destination_for(task_dir)
-    if archive_dest_check.exists():
-        print(colored(
-            f"Error: refusing to archive '{task_name}': "
-            f"archive destination already exists: "
-            f"{_repo_relative_path(archive_dest_check, repo_root)}",
-            Colors.RED), file=sys.stderr)
-        print(f"Task remains at: {_repo_relative_path(task_dir, repo_root)}", file=sys.stderr)
-        print("Move or rename the existing archived task, then retry.", file=sys.stderr)
-        return 1
-
     dir_name = task_dir.name
     task_json_path = task_dir / FILE_TASK_JSON
 
-    # Update status before archiving
-    today = datetime.now().strftime("%Y-%m-%d")
+    # Evaluate every archive precondition before changing status, children,
+    # session pointers, or the task directory itself.
+    context = GateContext(repo_root=repo_root, task_dir=task_dir)
+    if not gate.require("task_archive", context):
+        print(
+            f"Not archived: {_repo_relative_path(task_dir, repo_root)} is unchanged.",
+            file=sys.stderr,
+        )
+        return 1
+
+    data = context.task_data
+    if data is None:
+        # task_json_ready is part of task_archive; this is a defensive guard
+        # against a future rule implementation changing that contract.
+        print("Error: task_archive passed without task data", file=sys.stderr)
+        return 1
+
     # Names of child task dirs whose task.json gets modified below; passed
     # into safe_archive_paths_to_add so they're staged in this commit.
     modified_children: list[str] = []
-    if task_json_path.is_file():
-        data, read_reason = read_json_checked(task_json_path)
-        if data is None:
-            # Archiving is still the right outcome for a task whose task.json
-            # is broken — but say so, or the missing "completed" status looks
-            # like the archive silently did half its job.
-            problem, _ = describe_json_read_failure(task_json_path, read_reason)
-            print(
-                colored(
-                    f"Warning: {problem}; archiving without updating status/children.",
-                    Colors.YELLOW,
-                ),
-                file=sys.stderr,
-            )
-        else:
-            # Before any mutation: branch metadata is unrecoverable once the
-            # task leaves the active tree. Stale branches only warn.
-            if not _validate_branch_metadata(
-                data,
-                task_name,
-                repo_root,
-                getattr(args, "skip_branch_validation", False),
-            ):
-                print(
-                    f"Not archived: {_repo_relative_path(task_dir, repo_root)} is unchanged.",
-                    file=sys.stderr,
-                )
-                return 1
+    original_data = dict(data)
+    # Handle subtask relationships on archive.
+    # Keep this task in its parent's children list so progress counters
+    # (children_progress) stay consistent — children missing from the active
+    # set are treated as completed.
+    task_children = data.get("children", [])
 
-            data["status"] = "completed"
-            data["completedAt"] = today
-            if not write_json(task_json_path, data):
-                _report_write_failure(task_json_path)
-                print(
-                    f"Not archived: {_repo_relative_path(task_dir, repo_root)} is unchanged. "
-                    "Archiving a task still marked in progress would hide it from `list` "
-                    "with the wrong status.",
-                    file=sys.stderr,
-                )
-                return 1
+    # If this is a parent, clear parent field in all children.
+    if task_children:
+        for child_name in task_children:
+            child_dir_path = find_task_by_name(child_name, tasks_dir)
+            if child_dir_path:
+                child_json = child_dir_path / FILE_TASK_JSON
+                if child_json.is_file():
+                    child_data, child_reason = read_json_checked(child_json)
+                    if child_data is None:
+                        problem, _ = describe_json_read_failure(child_json, child_reason)
+                        print(
+                            colored(
+                                f"Warning: {problem}; child '{child_dir_path.name}' "
+                                "keeps its parent reference.",
+                                Colors.YELLOW,
+                            ),
+                            file=sys.stderr,
+                        )
+                        continue
+                    child_data["parent"] = None
+                    if not write_json(child_json, child_data):
+                        print(
+                            f"Warning: child '{child_dir_path.name}' could not be unlinked; "
+                            "the completed task remains in place for retry.",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    modified_children.append(child_dir_path.name)
 
-            # Handle subtask relationships on archive.
-            # Keep this task in its parent's children list so progress
-            # counters (children_progress) stay consistent — children
-            # missing from the active set are treated as completed.
-            task_children = data.get("children", [])
+    # Persist the parent completion only after all child links have been
+    # processed. If a child write fails, the parent remains in_progress and a
+    # retry can safely repeat already-completed unlinks.
+    today = datetime.now().strftime("%Y-%m-%d")
+    data["status"] = "completed"
+    data["completedAt"] = today
+    if not write_json(task_json_path, data):
+        _report_write_failure(task_json_path)
+        print(
+            f"Not archived: {_repo_relative_path(task_dir, repo_root)} is unchanged. "
+            "The task remains in progress until task.json can be written.",
+            file=sys.stderr,
+        )
+        return 1
 
-            # If this is a parent, clear parent field in all children
-            if task_children:
-                for child_name in task_children:
-                    child_dir_path = find_task_by_name(child_name, tasks_dir)
-                    if child_dir_path:
-                        child_json = child_dir_path / FILE_TASK_JSON
-                        if child_json.is_file():
-                            child_data, child_reason = read_json_checked(child_json)
-                            if child_data is None:
-                                problem, _ = describe_json_read_failure(child_json, child_reason)
-                                print(
-                                    colored(
-                                        f"Warning: {problem}; child '{child_dir_path.name}' "
-                                        "keeps its parent reference.",
-                                        Colors.YELLOW,
-                                    ),
-                                    file=sys.stderr,
-                                )
-                                continue
-                            child_data["parent"] = None
-                            if not write_json(child_json, child_data):
-                                # Stop before the move: a child pointing at a
-                                # parent that has left .trellis/tasks/ is a
-                                # dangling reference nothing repairs later.
-                                # Retrying is safe — every step so far is
-                                # idempotent.
-                                _report_write_failure(child_json)
-                                print(
-                                    f"Not archived: {_repo_relative_path(task_dir, repo_root)} is "
-                                    f"marked completed but stays in place because child "
-                                    f"'{child_dir_path.name}' could not be unlinked. "
-                                    "Fix the child, then run archive again.",
-                                    file=sys.stderr,
-                                )
-                                return 1
-                            modified_children.append(child_dir_path.name)
-
-    # Clear any session that still points at this task before the path moves.
-    from .active_task import clear_task_from_sessions
-    clear_task_from_sessions(str(task_dir), repo_root)
-
-    # Archive
+    # Move first; sessions are only cleared after the directory is safely out
+    # of the active tree. If the move fails, restore the original status so a
+    # retry still satisfies task_archive's in_progress -> completed gate.
     result = archive_task_complete(task_dir, repo_root)
     if "archived_to" in result:
+        from .active_task import clear_task_from_sessions
+        clear_task_from_sessions(str(task_dir), repo_root)
+
         archive_dest = Path(result["archived_to"])
         year_month = archive_dest.parent.name
         print(colored(f"Archived: {dir_name} -> archive/{year_month}/", Colors.GREEN), file=sys.stderr)
@@ -1401,6 +1282,16 @@ def cmd_archive(args: argparse.Namespace) -> int:
         run_task_hooks("after_archive", archived_json, repo_root)
         return 0
 
+    if write_json(task_json_path, original_data):
+        print(
+            f"Not archived: {_repo_relative_path(task_dir, repo_root)} remains in progress; retry after fixing the move failure.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"Error: archive move failed and task status rollback also failed; restore {task_json_path} to status=in_progress before retrying.",
+            file=sys.stderr,
+        )
     return 1
 
 

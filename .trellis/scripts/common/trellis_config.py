@@ -13,7 +13,8 @@ mappings by indentation, ``- `` lists of scalars, ``#`` comments (whole-line
 and inline outside quotes), and one layer of matching surrounding quotes.
 Constructs outside that subset — block scalars, anchors, aliases, merge keys,
 flow collections, and mappings nested inside a list — are reported on stderr
-and skipped rather than parsed into a plausible-looking wrong value.
+and skipped rather than parsed into a plausible-looking wrong value. Callers
+that need fail-closed behavior can pass ``strict=True`` to raise instead.
 """
 
 from __future__ import annotations
@@ -62,8 +63,12 @@ def _next_content_line(lines: list[str], start: int) -> tuple[int, str]:
     return i, ""
 
 
-def _warn_unsupported(source: str, lineno: int, line: str, reason: str) -> None:
-    """Report a YAML construct this parser cannot represent, and move on."""
+def _warn_unsupported(
+    source: str, lineno: int, line: str, reason: str, strict: bool = False
+) -> None:
+    """Report or reject a YAML construct this parser cannot represent."""
+    if strict:
+        raise ValueError(f"{source}:{lineno}: {reason}: {line.strip()}")
     print(
         f"[WARN] {source}:{lineno}: {reason}; ignoring: {line.strip()}",
         file=sys.stderr,
@@ -111,7 +116,12 @@ def _skip_indented_body(lines: list[str], start: int, indent: int) -> int:
 
 
 def _parse_yaml_block(
-    lines: list[str], start: int, min_indent: int, target: dict, source: str
+    lines: list[str],
+    start: int,
+    min_indent: int,
+    target: dict,
+    source: str,
+    strict: bool = False,
 ) -> int:
     i = start
     current_list: list | None = None
@@ -146,6 +156,7 @@ def _parse_yaml_block(
                     i + 1,
                     line,
                     "mappings inside a list are not supported",
+                    strict,
                 )
                 i += 1
                 continue
@@ -158,7 +169,7 @@ def _parse_yaml_block(
             if not was_quoted:
                 reason = _unsupported_value(key, value)
                 if reason is not None:
-                    _warn_unsupported(source, i + 1, line, reason)
+                    _warn_unsupported(source, i + 1, line, reason, strict)
                     current_list = None
                     i = _skip_indented_body(lines, i + 1, indent)
                     continue
@@ -184,17 +195,25 @@ def _parse_yaml_block(
                     if next_indent > indent:
                         nested: dict = {}
                         target[key] = nested
-                        i = _parse_yaml_block(lines, i + 1, next_indent, nested, source)
+                        i = _parse_yaml_block(
+                            lines, i + 1, next_indent, nested, source, strict
+                        )
                     else:
                         target[key] = {}
                         i += 1
         else:
+            if strict:
+                raise ValueError(
+                    f"{source}:{i + 1}: unsupported YAML syntax: {stripped}"
+                )
             i += 1
 
     return i
 
 
-def parse_simple_yaml(content: str, source: str = "config.yaml") -> dict:
+def parse_simple_yaml(
+    content: str, source: str = "config.yaml", strict: bool = False
+) -> dict:
     """Parse simple YAML with nested dict support (no dependencies).
 
     Supports:
@@ -209,7 +228,8 @@ def parse_simple_yaml(content: str, source: str = "config.yaml") -> dict:
 
     Uses indentation to detect nesting (2+ spaces deeper = child). Every value
     is a string; consumers coerce. Unsupported constructs are reported on
-    stderr against ``source`` and skipped — see the module docstring.
+    stderr against ``source`` and skipped by default. ``strict=True`` rejects
+    them instead — see the module docstring.
 
     Args:
         content: YAML content string.
@@ -220,7 +240,7 @@ def parse_simple_yaml(content: str, source: str = "config.yaml") -> dict:
     """
     lines = content.splitlines()
     result: dict = {}
-    _parse_yaml_block(lines, 0, 0, result, source)
+    _parse_yaml_block(lines, 0, 0, result, source, strict)
     return result
 
 

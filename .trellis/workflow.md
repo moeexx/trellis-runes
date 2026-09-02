@@ -51,6 +51,10 @@ python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
 
 **当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。状态存于 `.trellis/.runtime/sessions/`。若 hook 输入、`TRELLIS_CONTEXT_ID` 或平台会话环境变量均无 context key，`start` 报会话身份错误。
 
+### Central Gate
+
+确定性的 lifecycle 前置条件由 `.trellis/scripts/common/gate.py` 读取 `.trellis/gates.yaml` 统一执行。正常工作流只调用 `task.py start`、`task.py validate` 和 `task.py archive`；gate 失败时按返回的具体项修复并重试。`task_archive` 对缺失或损坏的 `task.json` 有意 fail-closed：先手工恢复为有效 JSON object，再重试；archive 没有重建或绕过该检查的命令。policy 是仓库内配置，具有与仓库写权限相同的 trust boundary；本地没有关闭或绕过 gate 的命令接口。新增/改动门禁见 `docs/gates.md`。
+
 ### Context 脚本
 
 ```bash
@@ -79,7 +83,7 @@ Phase 3: Finish  → 验证、更新 spec、提交、收尾
 - `design.md` —— 复杂任务的技术设计：边界、契约、数据流、取舍、兼容性、上线 / 回滚形态。
 - `implement.md` —— 复杂任务的执行计划：有序检查清单、验证命令、评审关卡、回滚节点。
 - `implement.jsonl` / `check.jsonl` —— 子代理上下文清单（spec + 研究），不替代 `implement.md`。
-- 轻量任务可只有 PRD；复杂任务在 `task.py start` 前必须三件套齐全。
+- 轻量任务可只有 PRD；复杂任务的 `design.md` / `implement.md` 由规划流程按语义需要维护。
 
 ### 父 / 子任务树
 
@@ -118,7 +122,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 
 ### Phase 1：计划（Plan）
 - 1.0 创建任务 `[required · once]`（仅在有任务创建许可之后）
-- 1.1 需求探索 `[required · repeatable]`（`prd.md`；复杂任务还需 `design.md` + `implement.md`）
+- 1.1 需求探索 `[required · repeatable]`（`prd.md`；复杂任务按需维护 `design.md` + `implement.md`）
 - 1.2 研究 `[optional · repeatable]`
 - 1.3 配置上下文 `[required · once]`（子代理分发平台；内联平台跳过）
 - 1.4 激活任务 `[required · once]`（评审后运行 `task.py start`；central gate 通过后 status → in_progress）
@@ -143,7 +147,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 2. 在每个阶段内按顺序执行步骤；`[required]` 步骤不能跳过
 3. 阶段可以回退（如 Execute 暴露 prd 缺陷 → 回计划修正再重新进入执行）
 4. `[once]` 步骤若输出已存在则跳过，不重复执行
-5. 产物存在性决定下一步；缺 `design.md` / `implement.md` 对轻量任务有效，对复杂任务则是规划不完整
+5. 规划产物与语义收敛共同决定下一步；`design.md` / `implement.md` 是否需要由规划流程判断
 
 ### 激活任务路由
 
