@@ -349,6 +349,14 @@ def cmd_create(args: argparse.Namespace) -> int:
             print(DEVELOPER_HINT, file=sys.stderr)
             return 1
 
+    # The create gate must run before ensure_tasks_dir, the first filesystem
+    # mutation in this command. Its task_dir is an unused root placeholder.
+    if not gate.require(
+        "task_create",
+        GateContext(repo_root=repo_root, task_dir=get_tasks_dir(repo_root)),
+    ):
+        return 1
+
     ensure_tasks_dir(repo_root)
 
     # Get current developer as creator

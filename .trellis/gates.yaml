@@ -1,6 +1,10 @@
 version: 1
 
 gates:
+  task_create:
+    require:
+      - session_activated_for_create
+
   task_start:
     transition:
       from: planning
@@ -10,6 +14,7 @@ gates:
       - task_json_ready
       - planning_artifacts_ready
       - context_ready
+      - session_activated_for_start
 
   context_validate:
     require:

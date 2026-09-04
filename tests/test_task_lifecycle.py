@@ -19,6 +19,7 @@ if str(SCRIPTS) not in sys.path:
 import task  # noqa: E402
 from common import task_store  # noqa: E402
 from common import task_context  # noqa: E402
+from common import gate  # noqa: E402
 
 
 class TaskLifecycleTests(unittest.TestCase):
@@ -32,6 +33,9 @@ class TaskLifecycleTests(unittest.TestCase):
             (ROOT / ".trellis" / "gates.yaml").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
+        self.context_key = patch.object(gate, "resolve_context_key", return_value=None)
+        self.context_key.start()
+        self.addCleanup(self.context_key.stop)
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -59,6 +63,26 @@ class TaskLifecycleTests(unittest.TestCase):
     def archive_args(self) -> Namespace:
         return Namespace(name=str(self.task_dir), no_commit=True)
 
+    def create_args(self) -> Namespace:
+        return Namespace(
+            title="New task",
+            description="Create lifecycle test task",
+            slug="new-task",
+            assignee="runes",
+            priority="P2",
+            parent=None,
+            package=None,
+            base_branch=None,
+            meta=None,
+            no_start=True,
+            force=False,
+        )
+
+    def write_activation(self, root: Path, entry: str) -> None:
+        marker = root / ".trellis" / ".runtime" / "workflow-activations" / "test-session.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text(json.dumps({"enabled": True, "entry": entry}), encoding="utf-8")
+
     def test_start_gate_failure_leaves_planning_status(self) -> None:
         task_json = self.write_task()
         with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
@@ -68,6 +92,49 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertNotEqual(result, 0)
         data = json.loads(task_json.read_text(encoding="utf-8"))
         self.assertEqual(data["status"], "planning")
+
+    def test_identified_session_requires_activation_before_start(self) -> None:
+        task_json = self.write_task()
+        self.write_prd()
+        with patch.object(gate, "resolve_context_key", return_value="test-session"), patch.object(
+            task, "get_repo_root", return_value=self.root
+        ), patch.object(task, "resolve_task_dir", return_value=self.task_dir):
+            result = task.cmd_start(self.start_args())
+        self.assertNotEqual(result, 0)
+        self.assertEqual(json.loads(task_json.read_text(encoding="utf-8"))["status"], "planning")
+
+        self.write_activation(self.root, "resume")
+        with patch.object(gate, "resolve_context_key", return_value="test-session"), patch.object(
+            task, "get_repo_root", return_value=self.root
+        ), patch.object(task, "resolve_task_dir", return_value=self.task_dir), patch.object(
+            task, "resolve_context_key", return_value=None
+        ), patch.object(task, "run_task_hooks"):
+            result = task.cmd_start(self.start_args())
+        self.assertEqual(result, 0)
+
+    def test_identified_session_requires_start_activation_before_create(self) -> None:
+        create_root = self.root / "create-root"
+        create_workflow = create_root / ".trellis"
+        create_workflow.mkdir(parents=True)
+        (create_workflow / "gates.yaml").write_text(
+            (ROOT / ".trellis" / "gates.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        with patch.object(gate, "resolve_context_key", return_value="test-session"), patch.object(
+            task_store, "get_repo_root", return_value=create_root
+        ):
+            denied = task_store.cmd_create(self.create_args())
+        self.assertNotEqual(denied, 0)
+        self.assertFalse((create_workflow / "tasks").exists())
+
+        self.write_activation(create_root, "start")
+        with patch.object(gate, "resolve_context_key", return_value="test-session"), patch.object(
+            task_store, "get_repo_root", return_value=create_root
+        ), patch.object(task_store, "resolve_default_branch", return_value="main"):
+            created = task_store.cmd_create(self.create_args())
+        self.assertEqual(created, 0)
+        self.assertEqual(len(list((create_workflow / "tasks").glob("*-new-task/task.json"))), 1)
 
     def test_valid_start_transitions_to_in_progress(self) -> None:
         task_json = self.write_task()
@@ -225,6 +292,7 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertFalse(session_file.exists())
 
     def test_lifecycle_entrypoints_call_canonical_gate(self) -> None:
+        self.assertIn("task_create", inspect.getsource(task_store.cmd_create))
         self.assertIn("gate.require", inspect.getsource(task.cmd_start))
         self.assertIn("gate.require", inspect.getsource(task_store.cmd_archive))
 

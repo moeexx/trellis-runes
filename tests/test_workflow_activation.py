@@ -94,6 +94,17 @@ class WorkflowActivationTests(unittest.TestCase):
         marker.write_text('{"enabled": true}', encoding="utf-8")
         self.assertFalse(self.activation("继续实现", "first").enabled)
 
+    def test_activation_entry_reads_only_valid_marker_schema(self) -> None:
+        runtime = self.root / ".trellis" / ".runtime" / "workflow-activations"
+        runtime.mkdir(parents=True)
+        marker = runtime / "claude_entry.json"
+
+        marker.write_text('{"enabled": true, "entry": "start"}', encoding="utf-8")
+        self.assertEqual(workflow_activation.activation_entry(self.root, "claude_entry"), "start")
+
+        marker.write_text('{"enabled": true, "entry": "invalid"}', encoding="utf-8")
+        self.assertIsNone(workflow_activation.activation_entry(self.root, "claude_entry"))
+
     def test_resume_reactivates_the_same_session(self) -> None:
         result = self.activation("恢复任务继续", "resume")
         self.assertTrue(result.enabled)

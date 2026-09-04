@@ -58,11 +58,11 @@ python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
 
 > 权威命令列表：`python3 ./.trellis/scripts/task.py --help`
 
-**当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。状态存于 `.trellis/.runtime/sessions/`。若 hook 输入、`TRELLIS_CONTEXT_ID` 或平台会话环境变量均无 context key，`start` 报会话身份错误。
+**当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。在可识别会话中，`create` 需要本会话先由消息首字符的「开始任务」激活，`start` 则接受「开始任务」或「恢复任务」激活；无会话身份的直接 CLI 调用保持降级兼容。状态存于 `.trellis/.runtime/sessions/`。
 
 ### Central Gate
 
-确定性的 lifecycle 前置条件由 `.trellis/scripts/common/gate.py` 读取 `.trellis/gates.yaml` 统一执行。正常工作流只调用 `task.py start`、`task.py validate` 和 `task.py archive`；gate 失败时按返回的具体项修复并重试。`task_archive` 对缺失或损坏的 `task.json` 有意 fail-closed：先手工恢复为有效 JSON object，再重试；archive 没有重建或绕过该检查的命令。policy 是仓库内配置，具有与仓库写权限相同的 trust boundary；本地没有关闭或绕过 gate 的命令接口。新增/改动门禁见 `docs/gates.md`。
+确定性的 lifecycle 前置条件由 `.trellis/scripts/common/gate.py` 读取 `.trellis/gates.yaml` 统一执行。正常工作流调用 `task.py create`、`task.py start`、`task.py validate` 和 `task.py archive`；gate 失败时按返回的具体项修复并重试。`task_archive` 对缺失或损坏的 `task.json` 有意 fail-closed：先手工恢复为有效 JSON object，再重试；archive 没有重建或绕过该检查的命令。policy 是仓库内配置，具有与仓库写权限相同的 trust boundary；本地没有关闭或绕过 gate 的命令接口。新增/改动门禁见 `docs/gates.md`。
 
 ### Context 脚本
 

@@ -30,6 +30,9 @@ class GateEngineTests(unittest.TestCase):
         (self.workflow / "gates.yaml").write_text(
             POLICY.read_text(encoding="utf-8"), encoding="utf-8"
         )
+        self.context_key = patch.object(gate, "resolve_context_key", return_value=None)
+        self.context_key.start()
+        self.addCleanup(self.context_key.stop)
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -63,6 +66,40 @@ class GateEngineTests(unittest.TestCase):
         self.write_manifest("check.jsonl", "check.md")
         result = gate.evaluate("task_start", self.context())
         self.assertTrue(result.ok)
+
+    def write_activation(self, entry: str) -> None:
+        marker = self.workflow / ".runtime" / "workflow-activations" / "test-session.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(
+            json.dumps({"enabled": True, "entry": entry}), encoding="utf-8"
+        )
+
+    def test_session_activation_rules_enforce_entries_and_keep_degraded_mode(self) -> None:
+        self.write_task()
+        (self.task / "prd.md").write_text("# Plan\n", encoding="utf-8")
+
+        # No stable identity is the documented direct-CLI compatibility mode.
+        self.assertTrue(gate.evaluate("task_create", self.context()).ok)
+        self.assertTrue(gate.evaluate("task_start", self.context()).ok)
+
+        with patch.object(gate, "resolve_context_key", return_value="test-session"):
+            create_denied = gate.evaluate("task_create", self.context())
+            start_denied = gate.evaluate("task_start", self.context())
+        self.assertEqual(create_denied.failures[-1].code, "workflow_not_started")
+        self.assertEqual(start_denied.failures[-1].code, "workflow_not_activated")
+
+        self.write_activation("resume")
+        with patch.object(gate, "resolve_context_key", return_value="test-session"):
+            self.assertEqual(
+                gate.evaluate("task_create", self.context()).failures[-1].code,
+                "workflow_not_started",
+            )
+            self.assertTrue(gate.evaluate("task_start", self.context()).ok)
+
+        self.write_activation("start")
+        with patch.object(gate, "resolve_context_key", return_value="test-session"):
+            self.assertTrue(gate.evaluate("task_create", self.context()).ok)
+            self.assertTrue(gate.evaluate("task_start", self.context()).ok)
 
     def test_single_failure(self) -> None:
         self.write_task()

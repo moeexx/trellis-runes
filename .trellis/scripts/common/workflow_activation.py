@@ -40,12 +40,17 @@ def _marker_path(repo_root: Path, context_key: str) -> Path:
 
 
 def _is_enabled(repo_root: Path, context_key: str) -> bool:
+    return activation_entry(repo_root, context_key) is not None
+
+
+def activation_entry(repo_root: Path, context_key: str) -> str | None:
+    """Return the valid workflow entry activated for a session, if any."""
     data = read_json(_marker_path(repo_root, context_key))
-    return (
-        isinstance(data, dict)
-        and data.get("enabled") is True
-        and data.get("entry") in {"start", "resume"}
-    )
+    if isinstance(data, dict) and data.get("enabled") is True:
+        entry = data.get("entry")
+        if entry in {"start", "resume"}:
+            return entry
+    return None
 
 
 def _enable(repo_root: Path, context_key: str, entry: str) -> bool:

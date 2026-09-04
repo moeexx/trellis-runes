@@ -19,6 +19,8 @@ from .io import describe_json_read_failure, read_json_checked
 from .paths import DIR_WORKFLOW, FILE_TASK_JSON
 from .task_utils import archive_destination_for
 from .trellis_config import parse_simple_yaml
+from .active_task import resolve_context_key
+from .workflow_activation import activation_entry
 
 
 POLICY_FILE = "gates.yaml"
@@ -354,12 +356,40 @@ def _archive_destination_available(ctx: GateContext) -> GateFailure | None:
     return None
 
 
+def _session_activated_for_create(ctx: GateContext) -> GateFailure | None:
+    context_key = resolve_context_key()
+    if not context_key:
+        return None
+    if activation_entry(ctx.repo_root, context_key) == "start":
+        return None
+    return GateFailure(
+        rule="session_activated_for_create",
+        code="workflow_not_started",
+        message="start this session with 『开始任务』 before creating a task",
+    )
+
+
+def _session_activated_for_start(ctx: GateContext) -> GateFailure | None:
+    context_key = resolve_context_key()
+    if not context_key:
+        return None
+    if activation_entry(ctx.repo_root, context_key) in {"start", "resume"}:
+        return None
+    return GateFailure(
+        rule="session_activated_for_start",
+        code="workflow_not_activated",
+        message="start this session with 『开始任务』 or 『恢复任务』 before starting a task",
+    )
+
+
 RULES: dict[str, Rule] = {
     "task_json_ready": _task_json_ready,
     "planning_artifacts_ready": _planning_artifacts_ready,
     "context_ready": _context_ready,
     "archive_branch_metadata": _archive_branch_metadata,
     "archive_destination_available": _archive_destination_available,
+    "session_activated_for_create": _session_activated_for_create,
+    "session_activated_for_start": _session_activated_for_start,
 }
 
 

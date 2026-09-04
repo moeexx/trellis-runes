@@ -15,11 +15,12 @@
 
 | gate | 触发命令 | transition | require 规则 |
 |---|---|---|---|
-| `task_start` | `task.py start` | `planning → in_progress`（`idempotent: true`） | `task_json_ready`、`planning_artifacts_ready`、`context_ready` |
+| `task_create` | `task.py create` | 无 | `session_activated_for_create` |
+| `task_start` | `task.py start` | `planning → in_progress`（`idempotent: true`） | `task_json_ready`、`planning_artifacts_ready`、`context_ready`、`session_activated_for_start` |
 | `context_validate` | `task.py validate` | 无 | `context_ready` |
 | `task_archive` | `task.py archive` | `in_progress → completed` | `task_json_ready`、`archive_branch_metadata`、`archive_destination_available` |
 
-当前已实现的规则：`task_json_ready`、`planning_artifacts_ready`、`context_ready`（校验 `implement.jsonl` / `check.jsonl` 的合法性、路径存在性与非空策展）、`archive_branch_metadata`、`archive_destination_available`。
+当前已实现的规则：`task_json_ready`、`planning_artifacts_ready`、`context_ready`（校验 `implement.jsonl` / `check.jsonl` 的合法性、路径存在性与非空策展）、`archive_branch_metadata`、`archive_destination_available`、`session_activated_for_create`、`session_activated_for_start`。后两者在可解析稳定会话身份时读取同会话的 workflow activation marker：`开始任务` 可 create/start，`恢复任务` 仅可 start；无会话身份的直接 CLI 调用保持既有降级放行行为。
 
 ## 架构与数据流
 
