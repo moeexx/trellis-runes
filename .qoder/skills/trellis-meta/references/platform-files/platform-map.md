@@ -82,7 +82,7 @@ Codex, Gemini CLI, Pi Agent, Kimi Code, and DeepSeek Harness (dsh) write the sha
 2. User says "all platforms should do this": synchronize equivalent entry points platform by platform; do not modify only one directory.
 3. User only says "my AI": inspect the configuration directories that actually exist in the project and infer the current AI platform.
 4. User wants project rules: prefer `.trellis/spec/` or a project-local skill.
-5. User wants Trellis behavior: edit `.trellis/workflow.md` plus platform hooks/agents/skills/commands.
+5. User wants Trellis behavior: edit `.trellis/workflow.md` and/or `.trellis/workflow/steps/` plus platform hooks/agents/skills/commands.
 
 ## When Paths Differ
 

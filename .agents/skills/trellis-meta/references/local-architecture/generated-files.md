@@ -9,6 +9,8 @@ This page only describes files that are visible and editable inside the user pro
 ```text
 .trellis/
 ├── workflow.md
+├── workflow/
+│   └── steps/
 ├── config.yaml
 ├── .developer
 ├── .version
@@ -23,6 +25,7 @@ This page only describes files that are visible and editable inside the user pro
 | Path | Usually editable? | Notes |
 | --- | --- | --- |
 | `.trellis/workflow.md` | Yes | Local workflow documentation and AI routing rules. |
+| `.trellis/workflow/steps/*.md` | Yes | Detailed contracts for each numbered workflow step. |
 | `.trellis/config.yaml` | Yes | Project configuration, hooks, packages, journal line limits, and related settings. |
 | `.trellis/spec/` | Yes | Project specs, intended to be updated regularly by users and AI. |
 | `.trellis/tasks/` | Yes | Task material and research artifacts, maintained by the task workflow. |

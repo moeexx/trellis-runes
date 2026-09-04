@@ -71,7 +71,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent-dir> <child-dir>
 
 `children` on the parent is a historical list. When a child is archived, Trellis keeps that child name in the parent so progress like `[2/3 done]` remains meaningful after completed children move to `archive/`.
 
-The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for sub-agent mode, and the phase descriptions in `workflow.md`.
+The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for sub-agent mode, and the compact index plus step contracts in `.trellis/workflow.md` and `.trellis/workflow/steps/`.
 
 ## Active Task
 

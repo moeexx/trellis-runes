@@ -5,7 +5,7 @@ description: "Resume work on the current task at the correct phase."
 
 # Continue Current Task
 
-Resume work on the current task — pick up at the right phase/step in `.trellis/workflow.md`.
+Resume work on the current task — pick up at the right phase/step in `.trellis/workflow.md` and `.trellis/workflow/steps/`.
 
 ---
 
@@ -35,7 +35,7 @@ Shows the Phase Index (Plan / Execute / Finish) with routing + skill mapping.
 - `status=in_progress` + check passed → **3.3** (spec update) → **3.4** (commit)
 - `status=completed` (rare; usually archived immediately) → archive flow
 
-Phase rules (full detail in `.trellis/workflow.md`):
+Phase transition rules (step detail in `.trellis/workflow/steps/<X.X>.md`):
 
 1. Run steps **in order** within a phase — `[required]` steps must not be skipped
 2. `[once]` steps are done once their output exists; `task.py start`/`validate`/`archive` gates enforce readiness.
@@ -55,4 +55,4 @@ Follow the loaded instructions. After each `[required]` step completes, move to 
 
 ## Reference
 
-Full workflow and detailed phase steps live in `.trellis/workflow.md`. This command is only an entry point — the canonical guidance is there.
+The workflow entry, index, routing, and state blocks live in `.trellis/workflow.md`; detailed step contracts live in `.trellis/workflow/steps/`. This command is only an entry point.

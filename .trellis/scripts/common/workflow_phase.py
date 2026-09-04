@@ -3,10 +3,10 @@
 """
 Workflow Phase Extraction.
 
-Extracts step-level content from .trellis/workflow.md and optionally filters
-platform-specific blocks.
+Extracts workflow index content from .trellis/workflow.md and step-level
+content from .trellis/workflow/steps/*.md.
 
-Platform marker syntax in workflow.md:
+Platform marker syntax in workflow.md and step contracts:
 
     [Claude Code, Cursor, ...]
     agent-capable content
@@ -14,13 +14,14 @@ Platform marker syntax in workflow.md:
 
 Provides:
     get_phase_index   - Extract the Phase Index section (no --step)
-    get_step          - Extract a single step (#### X.X) section
+    get_step          - Extract a complete step contract
     filter_platform   - Strip platform blocks that don't include the given name
 """
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from .paths import DIR_WORKFLOW, get_repo_root
 
@@ -31,11 +32,9 @@ def _workflow_md_path():
 # Match a line that *is* a platform marker: "[A, B, C]" or "[/A, B, C]"
 _MARKER_RE = re.compile(r"^\[(/?)([A-Za-z][^\[\]]*)\]\s*$")
 
-# Step heading: "#### 1.0 Title" or "#### 1.0 ..."
-_STEP_HEADING_RE = re.compile(r"^####\s+(\d+\.\d+)\b.*$")
-
-# Phase Index starts here; Phase 1/2/3 step bodies follow; ends at Breadcrumbs.
+# Phase Index starts here; the compact index ends at the first phase body.
 _PHASE_INDEX_HEADING = "## Phase Index"
+_STEP_ID_RE = re.compile(r"^\d+\.\d+$")
 
 
 def _read_workflow() -> str:
@@ -43,6 +42,13 @@ def _read_workflow() -> str:
     if not path.exists():
         raise FileNotFoundError(f"workflow.md not found: {path}")
     return path.read_text(encoding="utf-8")
+
+
+def _workflow_step_path(step_id: object) -> Path | None:
+    """Return the canonical path for one workflow step contract."""
+    if not isinstance(step_id, str) or not _STEP_ID_RE.fullmatch(step_id):
+        return None
+    return get_repo_root() / DIR_WORKFLOW / "workflow" / "steps" / f"{step_id}.md"
 
 
 def _parse_marker(line: str) -> tuple[bool, list[str]] | None:
@@ -98,37 +104,14 @@ def get_phase_index() -> str:
 
 
 def get_step(step_id: str) -> str:
-    """Return the `#### X.X` section matching step_id (header + body).
-
-    Body ends at the next `####` or `---` or `##` heading (whichever comes first).
-    """
-    text = _read_workflow()
-    lines = text.splitlines()
-
-    start: int | None = None
-    for i, line in enumerate(lines):
-        m = _STEP_HEADING_RE.match(line)
-        if m and m.group(1) == step_id:
-            start = i
-            break
-    if start is None:
+    """Return the complete step contract for ``step_id``."""
+    path = _workflow_step_path(step_id)
+    if path is None or not path.is_file():
         return ""
-
-    end: int = len(lines)
-    for j in range(start + 1, len(lines)):
-        line = lines[j]
-        if line.startswith("#### "):
-            end = j
-            break
-        if line.startswith("## "):
-            end = j
-            break
-        # Horizontal rule at column 0
-        if line.strip() == "---":
-            end = j
-            break
-
-    return "\n".join(lines[start:end]).rstrip() + "\n"
+    try:
+        return path.read_text(encoding="utf-8").rstrip() + "\n"
+    except OSError:
+        return ""
 
 
 def _platform_matches(platform: str, block_names: list[str]) -> bool:

@@ -141,8 +141,9 @@ In Trellis, command templates (e.g., `record-session.md`) exist in **multiple pl
 ## Generated Runtime Template Upgrade Consistency
 
 Some generated files are both documentation and runtime input. In Trellis,
-`.trellis/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
-SessionStart filters, and per-turn hooks. Template changes must be validated
+`.trellis/workflow.md` and `.trellis/workflow/steps/*.md` are parsed by
+`get_context.py`, `workflow_phase.py`, SessionStart filters, and per-turn hooks.
+Template changes must be validated
 against both fresh init and upgrade paths.
 
 ### Checklist: After Modifying A Runtime-Parsed Template
@@ -150,7 +151,7 @@ against both fresh init and upgrade paths.
 - [ ] Identify every runtime parser that reads the template, not just the file
       writer that installs it
 - [ ] Check whether relevant syntax lives outside obvious managed regions
-      such as tag blocks
+      such as tag blocks and step contract files
 - [ ] Verify fresh `init` output and a versioned `update` scenario that writes
       the older `.trellis/.version`
 - [ ] Add an upgrade regression using an older pristine template fixture, then
@@ -238,8 +239,9 @@ In Trellis, command templates (e.g., `record-session.md`) exist in **multiple pl
 ## Generated Runtime Template Upgrade Consistency
 
 Some generated files are both documentation and runtime input. In Trellis,
-`.trellis/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
-SessionStart filters, and per-turn hooks. Template changes must be validated
+`.trellis/workflow.md` and `.trellis/workflow/steps/*.md` are parsed by
+`get_context.py`, `workflow_phase.py`, SessionStart filters, and per-turn hooks.
+Template changes must be validated
 against both fresh init and upgrade paths.
 
 ### Checklist: After Modifying A Runtime-Parsed Template
@@ -247,7 +249,7 @@ against both fresh init and upgrade paths.
 - [ ] Identify every runtime parser that reads the template, not just the file
   writer that installs it
 - [ ] Check whether relevant syntax lives outside obvious managed regions
-  such as tag blocks
+  such as tag blocks and step contract files
 - [ ] Verify fresh `init` output and a versioned `update` scenario that writes
   the older `.trellis/.version`
 - [ ] Add an upgrade regression using an older pristine template fixture, then

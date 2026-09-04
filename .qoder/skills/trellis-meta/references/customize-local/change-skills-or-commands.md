@@ -26,7 +26,7 @@ The remainder of this file uses "skill" for the local file; the override and con
 | Team project conventions | Prefer `.trellis/spec/` or a project-local skill — never a bundled skill directory. |
 | Tweak a bundled skill (`trellis-meta` et al.) for the user's own project | Create a project-local sibling skill (different name) that overrides intent, or edit `.trellis/spec/`. Edits inside the bundled skill directory survive only until the next `trellis update` and will need a "keep" choice each time. |
 | Contribute the change back upstream | Edit `packages/cli/src/templates/common/bundled-skills/<name>/` in the Trellis CLI repo, not the deployed copy. |
-| Change Trellis flow semantics | Synchronize `.trellis/workflow.md`. |
+| Change Trellis flow semantics | Synchronize `.trellis/workflow.md` and, when applicable, `.trellis/workflow/steps/`. |
 
 ## Modify A Skill
 
@@ -71,7 +71,7 @@ Explicit entry points should state:
 - Which scripts to run.
 - How to report after completion.
 
-If a command only repeats workflow rules, prefer making it reference/read `.trellis/workflow.md` instead of maintaining a second copy of the flow.
+If a command only repeats workflow rules, prefer making it reference/read `.trellis/workflow.md` and the selected step contract instead of maintaining a second copy of the flow.
 
 ## Common Paths
 

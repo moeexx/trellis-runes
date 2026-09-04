@@ -14,7 +14,7 @@ Do not default to guiding the user to fork the Trellis CLI repository. Treat ups
 
 Trellis provides three layers inside a user project:
 
-1. **Workflow layer**: `.trellis/workflow.md` defines phases, routing, next actions, and prompt blocks.
+1. **Workflow layer**: `.trellis/workflow.md` defines the compact phase index, routing, and prompt blocks; `.trellis/workflow/steps/` contains detailed step contracts.
 2. **Persistence layer**: `.trellis/tasks/`, `.trellis/spec/`, and `.trellis/workspace/` store tasks, specs, and session memory.
 3. **Platform integration layer**: hooks, settings, agents, skills, commands, prompts, and workflows in platform directories connect the Trellis workflow to different AI tools.
 
@@ -24,7 +24,8 @@ All three layers live inside the user project, so an AI can read and modify them
 
 | Path | Purpose |
 | --- | --- |
-| `.trellis/workflow.md` | Workflow phases, skill routing, and workflow-state prompt blocks. |
+| `.trellis/workflow.md` | Compact phase index, skill routing, and workflow-state prompt blocks. |
+| `.trellis/workflow/steps/` | Detailed contracts for numbered workflow steps. |
 | `.trellis/config.yaml` | Project configuration, task lifecycle hooks, monorepo package configuration, and journal configuration. |
 | `.trellis/spec/` | The user's project-specific coding conventions and thinking guides. |
 | `.trellis/tasks/` | Each task's PRD, technical notes, research files, and JSONL context. |

@@ -1,10 +1,10 @@
 # Change Local Workflow
 
-When the user wants to change Trellis phases, next-action hints, whether to create tasks, whether to use sub-agents, or when to check/wrap up, edit `.trellis/workflow.md` first.
+When the user wants to change Trellis phases, step procedures, next-action hints, whether to create tasks, whether to use sub-agents, or when to check/wrap up, edit `.trellis/workflow.md` or the relevant `.trellis/workflow/steps/` contract first.
 
 ## Read These Files First
 
-1. `.trellis/workflow.md`
+1. `.trellis/workflow.md` and the relevant `.trellis/workflow/steps/<step>.md`
 2. Entry files for the current platform, such as skills/commands/prompts/workflows
 3. The current task's `task.json` and `prd.md`
 
@@ -12,7 +12,7 @@ When the user wants to change Trellis phases, next-action hints, whether to crea
 
 | Need | Edit point |
 | --- | --- |
-| Change phase names or phase order | `Phase Index` and the corresponding Phase sections. |
+| Change phase names or phase order | `Phase Index` and the corresponding step contracts. |
 | Change whether to create a task when there is no task | `[workflow-state:no_task]` state block. |
 | Change the next step during planning | Phase 1 and `[workflow-state:planning]`. |
 | Change whether an agent is required during in_progress | Phase 2 and `[workflow-state:in_progress]`. |
@@ -21,7 +21,7 @@ When the user wants to change Trellis phases, next-action hints, whether to crea
 
 ## Modification Steps
 
-1. Find the relevant section in `.trellis/workflow.md`.
+1. Find the relevant entry in `.trellis/workflow.md` or the matching step contract in `.trellis/workflow/steps/`.
 2. When changing rules, keep explicit trigger conditions and next actions.
 3. If adding or renaming a skill/agent, synchronize the corresponding files in platform directories.
 4. Workflow-state changes only need an edit to the `[workflow-state:STATUS]` block in `.trellis/workflow.md`. The hook is parser-only — it reads whatever you put in the block. Keep the opening and closing tags' STATUS strings identical (`[workflow-state:foo]…[/workflow-state:foo]`); mismatched STATUS pairs are silently dropped.

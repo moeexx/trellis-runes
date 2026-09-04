@@ -25,7 +25,7 @@ Compact Phase Index, request triage rules, planning artifact contract, and the s
 python3 ./.trellis/scripts/get_context.py --mode phase
 ```
 
-Full guide in `.trellis/workflow.md` (read on demand).
+Workflow entry and index in `.trellis/workflow.md`; read the selected step contract from `.trellis/workflow/steps/<X.X>.md` on demand.
 
 ## Step 3: Guideline indexes
 Discover packages + spec layers, then read each relevant index file.

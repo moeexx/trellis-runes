@@ -4,7 +4,7 @@ Trellis connects the same local architecture to different AI tools. `.trellis/` 
 
 When a local AI modifies Trellis, it should distinguish two file categories first:
 
-- **Shared files**: `.trellis/workflow.md`, `.trellis/tasks/`, `.trellis/spec/`, `.trellis/scripts/`.
+- **Shared files**: `.trellis/workflow.md`, `.trellis/workflow/steps/`, `.trellis/tasks/`, `.trellis/spec/`, `.trellis/scripts/`.
 - **Platform files**: `.claude/`, `.snow/`, `.codex/`, `.cursor/`, `.opencode/`, `.kiro/`, `.gemini/`, `.qoder/`, `.codebuddy/`, `.github/`, `.factory/`, `.pi/`, `.trae/`, `.kilocode/`, `.agent/`, `.devin/`, `.reasonix/`, `.zcode/`, `.kimi-code/`, and similar directories.
 
 Platform files do not store business state. They let the corresponding AI tool read Trellis state, call Trellis scripts, and load Trellis skills/agents/hooks.
@@ -54,6 +54,6 @@ When the user asks to customize behavior for a platform, the AI should inspect f
 2. Read the target platform's settings/config to see which hooks/agents/skills/commands are registered.
 3. Read the target platform's agents/skills/commands/hooks.
 4. Modify the local file closest to the user's need.
-5. If the change affects the shared flow, synchronize `.trellis/workflow.md` or `.trellis/spec/`.
+5. If the change affects the shared flow, synchronize `.trellis/workflow.md`, `.trellis/workflow/steps/`, or `.trellis/spec/` as appropriate.
 
 Do not modify only platform files and forget the shared workflow. Do not modify only `.trellis/workflow.md` and forget that platform entry points may still contain old descriptions.

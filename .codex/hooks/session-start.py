@@ -413,7 +413,7 @@ def _build_workflow_toc(workflow_path: Path) -> str:
 
     out_lines = [
         "# Development Workflow - Session Summary",
-        "Full guide: .trellis/workflow.md. Step detail: `python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
+        "Workflow entry: .trellis/workflow.md. Step detail: `python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
         "",
     ]
 

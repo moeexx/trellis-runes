@@ -1,14 +1,15 @@
 # Local Workflow System
 
-`.trellis/workflow.md` is the Trellis workflow source of truth inside the user project. An AI does not need Trellis source code to understand how the current project should move tasks forward; this file is enough.
+`.trellis/workflow.md` is the Trellis workflow entry point inside the user project. It contains the compact index, routing, and state prompts; detailed step contracts live in `.trellis/workflow/steps/`.
 
 ## File Responsibilities
 
-`.trellis/workflow.md` has three responsibilities:
+`.trellis/workflow.md` has four responsibilities:
 
 1. **Explain workflow phases**: Plan, Execute, Finish.
 2. **Define skill routing**: which skill or agent the AI should use when the user expresses a certain intent.
 3. **Provide workflow-state prompt blocks**: hooks can inject the prompt block for the current state into the conversation.
+4. **Index step contracts**: map each numbered step to `.trellis/workflow/steps/<step>.md`.
 
 ## Current Phase Model
 
@@ -18,7 +19,7 @@ Phase 2: Execute -> implement against the PRD and specs, then check
 Phase 3: Finish  -> final verification, preserve lessons, and wrap up
 ```
 
-Each phase contains numbered steps, such as `1.3 Configure context`. These numbers are not runtime fields in `task.json`; they are workflow structure for AI and humans to read.
+Each phase contains numbered steps, such as `1.3 Configure context`. These numbers are not runtime fields in `task.json`; they are stable workflow identifiers used to load the matching step contract.
 
 ## Skill Routing
 
@@ -58,6 +59,7 @@ Common changes:
 | --- | --- |
 | Add a phase | Update the Phase Index, phase body, routing, and state blocks. |
 | Change task creation policy | Update the `no_task` state block and Phase 1 description. |
+| Change a step's procedure | Update `.trellis/workflow/steps/<step>.md` and its Phase Index entry. |
 | Change the default implementation/check path | Update Phase 2 and skill routing. |
 | Change the wrap-up flow | Update Phase 3 and `finish-work` related descriptions. Note the current split: Phase 3.4 = AI-driven code commits (batched, user-confirmed), Phase 3.5 = `/finish-work` (archive + record session). `/finish-work` refuses to run if the working tree is dirty. |
 | Change platform differences | Update routing descriptions grouped by platform. |

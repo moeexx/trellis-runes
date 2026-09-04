@@ -99,7 +99,8 @@ def build_workflow_entry(entry: str) -> str:
             "由“恢复任务”启用本会话的 Trellis workflow。先运行 "
             "`python3 ./.trellis/scripts/get_context.py` 与 "
             "`python3 ./.trellis/scripts/get_context.py --mode phase`，再读取 "
-            "`.trellis/workflow.md`；根据 active task 的 status 与已有产物定位下一步，"
+            "`.trellis/workflow.md`，并按需读取 `.trellis/workflow/steps/<step>.md`；"
+            "根据 active task 的 status 与已有产物定位下一步，"
             "不要自动改变任务状态。"
         )
     else:
@@ -107,7 +108,8 @@ def build_workflow_entry(entry: str) -> str:
             "由“开始任务”启用本会话的 Trellis workflow。先运行 "
             "`python3 ./.trellis/scripts/get_context.py` 与 "
             "`python3 ./.trellis/scripts/get_context.py --mode phase`，再读取 "
-            "`.trellis/workflow.md`；按 Phase 1 分类当前请求，未经用户明确同意不要创建或启动任务。"
+            "`.trellis/workflow.md`，并按需读取 `.trellis/workflow/steps/<step>.md`；"
+            "按 Phase 1 分类当前请求，未经用户明确同意不要创建或启动任务。"
         )
     return f"<trellis-workflow-entry>\n{body}\n</trellis-workflow-entry>"
 

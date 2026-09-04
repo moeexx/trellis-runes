@@ -16,7 +16,7 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 
 | Source | Purpose |
 | --- | --- |
-| `.trellis/workflow.md` | Workflow and next-action hints. |
+| `.trellis/workflow.md` + `.trellis/workflow/steps/` | Workflow index, next-action hints, and step contracts. |
 | `.trellis/tasks/<task>/prd.md` | Current task requirements. |
 | `.trellis/tasks/<task>/design.md` | Complex task technical design. |
 | `.trellis/tasks/<task>/implement.md` | Complex task execution plan. |
