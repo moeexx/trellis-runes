@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Trellis per-turn breadcrumb hook (UserPromptSubmit / BeforeAgent equivalent).
 
-Runs on every user prompt. Resolves the active task through Trellis'
-session-aware active task resolver and emits a short <workflow-state>
-block reminding the main AI what task is active and its expected flow.
+Runs on every user prompt, but emits workflow context only after the current
+session is explicitly activated by a prompt beginning with ``开始任务`` or
+``恢复任务``. Once activated, it resolves the active task and emits a short
+<workflow-state> block for the rest of that session.
 
 The emitted ``hookEventName`` field is platform-aware: most hosts expect
 ``UserPromptSubmit`` (Claude Code naming, also accepted by Cursor / Qoder /
@@ -66,14 +67,6 @@ if sys.platform.startswith("win"):
             except Exception:
                 pass  # Optional Windows stream setup; keep hook startup non-fatal.
 from typing import Optional
-
-
-# Bootstrap notice for Codex while the session has no active task. Codex does not
-# get the full SessionStart overview; this short reminder points the main session
-# at the start skill once and leaves the per-turn state block compact.
-CODEX_NO_TASK_BOOTSTRAP_NOTICE = """<trellis-bootstrap>
-If you have not already loaded Trellis context this session, read the `trellis-start` skill once.
-</trellis-bootstrap>"""
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +149,27 @@ def _resolve_active_task(root: Path, input_data: dict):
     from common.active_task import resolve_active_task  # type: ignore[import-not-found]
 
     return resolve_active_task(root, input_data, platform=_detect_platform(input_data))
+
+
+def _resolve_workflow_activation(root: Path, input_data: dict, platform: str | None):
+    scripts_dir = root / ".trellis" / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    from common.workflow_activation import resolve_workflow_activation  # type: ignore[import-not-found]
+
+    return resolve_workflow_activation(root, input_data.get("prompt"), input_data, platform)
+
+
+def _build_workflow_entry(entry: str) -> str:
+    from common.workflow_activation import build_workflow_entry  # type: ignore[import-not-found]
+
+    return build_workflow_entry(entry)
+
+
+def _build_activation_error(error: str) -> str:
+    from common.workflow_activation import build_activation_error  # type: ignore[import-not-found]
+
+    return build_activation_error(error)
 
 
 def get_active_task(
@@ -430,32 +444,41 @@ def main() -> int:
     if root is None:
         return 0  # not a Trellis project
 
-    config = _read_trellis_config(root)
-    if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
-        return 0  # user opted out of the per-turn breadcrumb for this turn
-
-    templates = load_breadcrumbs(root)
     platform = _detect_platform(data)
-    task = get_active_task(root, data)
-    if task is None:
-        # No active task — still emit a breadcrumb nudging AI toward
-        # trellis-brainstorm + task.py create when user describes real work.
-        no_task_key = resolve_breadcrumb_key("no_task", platform, config)
-        breadcrumb = build_breadcrumb(
-            None, "no_task", templates, breadcrumb_key=no_task_key
-        )
+    activation = _resolve_workflow_activation(root, data, platform)
+    if activation.error:
+        breadcrumb = _build_activation_error(activation.error)
+    elif not activation.enabled:
+        return 0
     else:
-        task_id, status, source = task
-        status_key = resolve_breadcrumb_key(status, platform, config)
-        source_for_breadcrumb = None if platform == "codex" else source
-        breadcrumb = build_breadcrumb(
-            task_id, status, templates, source_for_breadcrumb, breadcrumb_key=status_key
-        )
-    if platform == "codex":
-        parts: list[str] = []
+        config = _read_trellis_config(root)
+        if (
+            activation.entry is None
+            and prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config))
+        ):
+            return 0  # user opted out of this activated session's breadcrumb for one turn
+
+    if not activation.error:
+        templates = load_breadcrumbs(root)
+        task = get_active_task(root, data)
         if task is None:
-            parts.append(CODEX_NO_TASK_BOOTSTRAP_NOTICE)
-        parts.append(_codex_mode_banner(config))
+            no_task_key = resolve_breadcrumb_key("no_task", platform, config)
+            breadcrumb = build_breadcrumb(
+                None, "no_task", templates, breadcrumb_key=no_task_key
+            )
+        else:
+            task_id, status, source = task
+            status_key = resolve_breadcrumb_key(status, platform, config)
+            source_for_breadcrumb = None if platform == "codex" else source
+            breadcrumb = build_breadcrumb(
+                task_id, status, templates, source_for_breadcrumb, breadcrumb_key=status_key
+            )
+
+        parts: list[str] = []
+        if activation.entry:
+            parts.append(_build_workflow_entry(activation.entry))
+        if platform == "codex":
+            parts.append(_codex_mode_banner(config))
         parts.append(breadcrumb)
         breadcrumb = "\n\n".join(parts)
 
