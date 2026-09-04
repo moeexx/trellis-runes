@@ -30,6 +30,12 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # 单步工
 
 编码规范位于 `.trellis/spec/<package>/<layer>/index.md`（当前为 generic 的 backend/frontend 引导层，与 `Trellis/` 源码内的产品无关）。
 
+## Python 测试环境
+
+- 根目录 `.venv/` 由 `uv` 管理，已在 `.gitignore` 中忽略；不要依赖系统 Python 的第三方包。
+- 初始化或重建环境：`uv venv --python 3.12 .venv`，安装测试依赖：`uv pip install --python .venv/bin/python pytest`。
+- 执行测试：`.venv/bin/python -m pytest tests/<test_file>.py`。
+
 ## 参考：Trellis 源码结构（只读）
 
 `Trellis/` 是 pnpm monorepo（`packages/core` + `packages/cli`），其意义在于解释顶层脚手架从哪来：
