@@ -51,6 +51,59 @@ WORKFLOW_CONSTANTS = frozenset(
         "dispatch_mode",
     }
 )
+SESSION_START_PATH = Path("hooks/session-start.py")
+SESSION_START_SYMBOLS = frozenset(
+    {
+        "_build_compact_current_state",
+        "_build_first_reply_notice",
+        "_build_workflow_overview",
+        "_check_legacy_spec",
+        "_collect_spec_index_paths",
+        "_detect_platform",
+        "_get_task_status",
+        "_load_trellis_config",
+        "_normalize_windows_shell_path",
+        "_persist_context_key_for_bash",
+        "_resolve_context_key",
+        "_resolve_spec_scope",
+        "_resolve_update_hint",
+        "should_skip_injection",
+    }
+)
+CODEX_SESSION_START_SYMBOLS = frozenset(
+    {
+        "FIRST_REPLY_NOTICE",
+        "_build_compact_current_state",
+        "_build_workflow_overview",
+        "_collect_spec_index_paths",
+        "_detect_platform",
+        "_get_task_status",
+        "_normalize_windows_shell_path",
+        "should_skip_injection",
+    }
+)
+EXTRACTED_SESSION_START_HELPERS = frozenset(
+    {
+        "_normalize_windows_shell_path",
+        "_build_first_reply_notice",
+        "should_skip_injection",
+        "read_file",
+        "_repo_relative",
+        "_run_git",
+        "_format_git_state",
+        "_normalize_task_ref",
+        "_resolve_task_dir",
+        "_get_task_status",
+        "_load_trellis_config",
+        "_check_legacy_spec",
+        "_resolve_spec_scope",
+        "_collect_spec_index_paths",
+        "_build_compact_current_state",
+        "_extract_range",
+        "_strip_breadcrumb_tag_blocks",
+        "_build_workflow_overview",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -59,6 +112,12 @@ class HookContract:
     calls: frozenset[str]
     helpers: frozenset[str]
     constants: frozenset[str]
+
+
+@dataclass(frozen=True)
+class SessionStartContract:
+    imports: frozenset[str]
+    local_helpers: frozenset[str]
 
 
 def extract_contract(source: str, filename: str = "hook.py") -> HookContract:
@@ -98,9 +157,32 @@ def extract_contract(source: str, filename: str = "hook.py") -> HookContract:
     )
 
 
+def extract_session_start_contract(
+    source: str, filename: str = "session-start.py"
+) -> SessionStartContract:
+    tree = ast.parse(source, filename=filename)
+    imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "common.session_start"
+        for alias in node.names
+    }
+    local_helpers = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in EXTRACTED_SESSION_START_HELPERS
+    }
+    return SessionStartContract(frozenset(imports), frozenset(local_helpers))
+
+
 class PlatformParityTests(unittest.TestCase):
     def hook_source(self, platform: str) -> str:
         return (ROOT / f".{platform}" / HOOK_PATH).read_text(encoding="utf-8")
+
+    def session_start_source(self, platform: str) -> str:
+        return (ROOT / f".{platform}" / SESSION_START_PATH).read_text(encoding="utf-8")
 
     def assert_shared_contract(self, contract: HookContract) -> None:
         self.assertEqual(contract.imports, WORKFLOW_ACTIVATION_SYMBOLS)
@@ -135,6 +217,32 @@ class PlatformParityTests(unittest.TestCase):
             with self.subTest(member=member):
                 with self.assertRaises(AssertionError):
                     self.assert_shared_contract(extract_contract(mutated_source, member))
+
+    def assert_session_start_contract(
+        self, contract: SessionStartContract, expected_imports: frozenset[str]
+    ) -> None:
+        self.assertEqual(contract.imports, expected_imports)
+        self.assertFalse(contract.local_helpers)
+
+    def test_session_start_hooks_import_shared_logic_without_local_copies(self) -> None:
+        for platform in ("claude", "kiro", "qoder"):
+            with self.subTest(platform=platform):
+                self.assert_session_start_contract(
+                    extract_session_start_contract(self.session_start_source(platform), platform),
+                    SESSION_START_SYMBOLS,
+                )
+        self.assert_session_start_contract(
+            extract_session_start_contract(self.session_start_source("codex"), "codex"),
+            CODEX_SESSION_START_SYMBOLS,
+        )
+
+    def test_checker_rejects_reintroduced_session_start_helper(self) -> None:
+        source = self.session_start_source("claude")
+        mutated = source + "\n\ndef _normalize_windows_shell_path(path_str):\n    return path_str\n"
+        with self.assertRaises(AssertionError):
+            self.assert_session_start_contract(
+                extract_session_start_contract(mutated), SESSION_START_SYMBOLS
+            )
 
 
 if __name__ == "__main__":
