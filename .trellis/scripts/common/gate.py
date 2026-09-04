@@ -110,7 +110,9 @@ def _load_policy(ctx: GateContext) -> dict[str, Any]:
         ):
             raise _PolicyError(f"policy_invalid: gate {gate_id}.require must be a list")
         if not required:
-            raise _PolicyError(f"policy_invalid: gate {gate_id}.require cannot be empty")
+            raise _PolicyError(
+                f"policy_invalid: gate {gate_id}.require cannot be empty"
+            )
         transition = spec.get("transition")
         if transition is not None:
             if not isinstance(transition, dict):
@@ -280,9 +282,11 @@ def _context_ready(ctx: GateContext) -> RuleResult:
 
             target = _resolve_context_path(file_path, ctx)
             entry_type = row.get("type", "file")
-            if target is None or (
-                target.is_dir() if entry_type == "directory" else target.is_file()
-            ) is False:
+            if (
+                target is None
+                or (target.is_dir() if entry_type == "directory" else target.is_file())
+                is False
+            ):
                 file_has_failure = True
                 failures.append(
                     GateFailure(
@@ -365,7 +369,7 @@ def _session_activated_for_create(ctx: GateContext) -> GateFailure | None:
     return GateFailure(
         rule="session_activated_for_create",
         code="workflow_not_started",
-        message="start this session with 『开始任务』 before creating a task",
+        message="start this session with 『创建任务』 before creating a task",
     )
 
 
@@ -378,7 +382,7 @@ def _session_activated_for_start(ctx: GateContext) -> GateFailure | None:
     return GateFailure(
         rule="session_activated_for_start",
         code="workflow_not_activated",
-        message="start this session with 『开始任务』 or 『恢复任务』 before starting a task",
+        message="start this session with 『创建任务』 or 『恢复任务』 before starting a task",
     )
 
 

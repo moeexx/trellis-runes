@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 注意
 
-- `.trellis/workflow.md` 是精简汉化版工作流文档（聚焦开发任务实操）；仅当用户消息首字符以 `开始任务` 或 `恢复任务` 开头时由 hook 加载，其它对话默认不读取。
+- `.trellis/workflow.md` 是精简汉化版工作流文档（聚焦开发任务实操）；仅当用户消息首字符以 `创建任务` 或 `恢复任务` 开头时由 hook 加载，其它对话默认不读取。
 - `docs/workflow-backup.md` 是完整英文原文备份，含精简掉的内容（fork 定制、解析器/契约 meta、平台专属块、Codex 内联变体、workspace 会话日志）；需要这些细节时再查看，**默认不阅读**。
 - `docs/gates.md` 是 Central Gate（门禁）体系文档：`task.py start/validate/archive` 的确定性前置条件如何新增、修改与测试；改动任何门禁前先读它。
 
@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Trellis 运行时（`.trellis/`）
 
-Trellis 是 agent 任务/规范管理系统，工作流定义在 `.trellis/workflow.md`。以 `开始任务` 开头进入新任务流程，以 `恢复任务` 开头恢复当前任务；未触发时不加载 workflow。可用 Trellis 命令时优先使用（如 `/trellis:finish-work`、`/trellis:continue`），未暴露的平台再手动执行。常用脚本：
+Trellis 是 agent 任务/规范管理系统，工作流定义在 `.trellis/workflow.md`。以 `创建任务` 开头进入新任务流程，以 `恢复任务` 开头恢复当前任务；未触发时不加载 workflow。可用 Trellis 命令时优先使用（如 `/trellis:finish-work`、`/trellis:continue`），未暴露的平台再手动执行。常用脚本：
 
 ```bash
 python3 ./.trellis/scripts/init_developer.py <name>          # 开发者身份初始化

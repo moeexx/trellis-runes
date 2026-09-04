@@ -10,7 +10,7 @@ from .active_task import resolve_context_key
 from .io import read_json, write_json
 
 
-START_PREFIX = "开始任务"
+START_PREFIX = "创建任务"
 RESUME_PREFIX = "恢复任务"
 ACTIVATION_DIR = "workflow-activations"
 
@@ -110,7 +110,7 @@ def build_workflow_entry(entry: str) -> str:
         )
     else:
         body = (
-            "由“开始任务”启用本会话的 Trellis workflow。先运行 "
+            "由“创建任务”启用本会话的 Trellis workflow。先运行 "
             "`python3 ./.trellis/scripts/get_context.py` 与 "
             "`python3 ./.trellis/scripts/get_context.py --mode phase`，再读取 "
             "`.trellis/workflow.md`，并按需读取 `.trellis/workflow/steps/<step>.md`；"

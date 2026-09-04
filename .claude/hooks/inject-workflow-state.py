@@ -2,7 +2,7 @@
 """Trellis per-turn breadcrumb hook (UserPromptSubmit / BeforeAgent equivalent).
 
 Runs on every user prompt, but emits workflow context only after the current
-session is explicitly activated by a prompt beginning with ``开始任务`` or
+session is explicitly activated by a prompt beginning with ``创建任务`` or
 ``恢复任务``. Once activated, it resolves the active task and emits a short
 <workflow-state> block for the rest of that session.
 
@@ -35,6 +35,7 @@ When a session points at a task directory whose task.json is missing, malformed,
 or missing a usable status, the hook emits a task_error breadcrumb instead of
 misreporting the session as having no active task.
 """
+
 from __future__ import annotations
 
 import json
@@ -52,6 +53,7 @@ from pathlib import Path
 # but applied per-stream so we don't depend on host CLI's command wiring.
 if sys.platform.startswith("win"):
     import io as _io
+
     for _stream_name in ("stdin", "stdout", "stderr"):
         _stream = getattr(sys, _stream_name, None)
         if _stream is None:
@@ -63,7 +65,13 @@ if sys.platform.startswith("win"):
                 pass  # Optional Windows stream setup; keep hook startup non-fatal.
         elif hasattr(_stream, "detach"):
             try:
-                setattr(sys, _stream_name, _io.TextIOWrapper(_stream.detach(), encoding="utf-8", errors="replace"))
+                setattr(
+                    sys,
+                    _stream_name,
+                    _io.TextIOWrapper(
+                        _stream.detach(), encoding="utf-8", errors="replace"
+                    ),
+                )
             except Exception:
                 pass  # Optional Windows stream setup; keep hook startup non-fatal.
 from typing import Optional
@@ -72,6 +80,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # CWD-robust Trellis root discovery (fixes hook-path-robustness for this hook)
 # ---------------------------------------------------------------------------
+
 
 def find_trellis_root(start: Path) -> Optional[Path]:
     """Walk up from start to find directory containing .trellis/.
@@ -90,6 +99,7 @@ def find_trellis_root(start: Path) -> Optional[Path]:
 # ---------------------------------------------------------------------------
 # Active task discovery
 # ---------------------------------------------------------------------------
+
 
 def _detect_platform(input_data: dict) -> str | None:
     if isinstance(input_data.get("cursor_version"), str):
@@ -157,7 +167,9 @@ def _resolve_workflow_activation(root: Path, input_data: dict, platform: str | N
         sys.path.insert(0, str(scripts_dir))
     from common.workflow_activation import resolve_workflow_activation  # type: ignore[import-not-found]
 
-    return resolve_workflow_activation(root, input_data.get("prompt"), input_data, platform)
+    return resolve_workflow_activation(
+        root, input_data.get("prompt"), input_data, platform
+    )
 
 
 def _build_workflow_entry(entry: str) -> str:
@@ -172,9 +184,7 @@ def _build_activation_error(error: str) -> str:
     return build_activation_error(error)
 
 
-def get_active_task(
-    root: Path, input_data: dict
-) -> tuple[str, str, str] | None:
+def get_active_task(root: Path, input_data: dict) -> tuple[str, str, str] | None:
     """Return active task data, a task-record error, or no task pointer.
 
     ``(task_id, "task_error", source)`` is distinct from ``None``: a session
@@ -219,6 +229,7 @@ _TAG_RE = re.compile(
     r"\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n(.*?)\n\s*\[/workflow-state:\1\]",
     re.DOTALL,
 )
+
 
 def load_breadcrumbs(root: Path) -> dict[str, str]:
     """Parse workflow.md for [workflow-state:STATUS] blocks.
@@ -350,9 +361,7 @@ def _codex_mode_banner(config: dict) -> str:
     return f"<codex-mode>{meaning}</codex-mode>"
 
 
-def resolve_breadcrumb_key(
-    status: str, platform: str | None, config: dict
-) -> str:
+def resolve_breadcrumb_key(status: str, platform: str | None, config: dict) -> str:
     """Pick the breadcrumb tag key based on Codex dispatch_mode.
 
     Codex defaults to ``auto`` and therefore uses the ordinary ``<status>``
@@ -398,6 +407,7 @@ def build_breadcrumb(
 # Entry
 # ---------------------------------------------------------------------------
 
+
 def _load_hook_input() -> dict:
     """Read hook JSON without trusting host runners to close stdin.
 
@@ -432,7 +442,10 @@ def _load_hook_input() -> dict:
 
 
 def main() -> int:
-    if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
+    if (
+        os.environ.get("TRELLIS_HOOKS") == "0"
+        or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1"
+    ):
         return 0
 
     data = _load_hook_input()
@@ -452,11 +465,12 @@ def main() -> int:
         return 0
     else:
         config = _read_trellis_config(root)
-        if (
-            activation.entry is None
-            and prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config))
+        if activation.entry is None and prompt_has_skip_keyword(
+            data.get("prompt", ""), _resolve_skip_keyword(config)
         ):
-            return 0  # user opted out of this activated session's breadcrumb for one turn
+            return (
+                0  # user opted out of this activated session's breadcrumb for one turn
+            )
 
     if not activation.error:
         templates = load_breadcrumbs(root)
@@ -471,7 +485,11 @@ def main() -> int:
             status_key = resolve_breadcrumb_key(status, platform, config)
             source_for_breadcrumb = None if platform == "codex" else source
             breadcrumb = build_breadcrumb(
-                task_id, status, templates, source_for_breadcrumb, breadcrumb_key=status_key
+                task_id,
+                status,
+                templates,
+                source_for_breadcrumb,
+                breadcrumb_key=status_key,
             )
 
         parts: list[str] = []
@@ -493,9 +511,7 @@ def main() -> int:
     # Gemini CLI 0.40.x rejects "UserPromptSubmit" — its per-turn event is
     # named "BeforeAgent". Other platforms (Claude/Cursor/Qoder/CodeBuddy/
     # Droid/Codex/Copilot) accept the original Claude-style name.
-    hook_event_name = (
-        "BeforeAgent" if platform == "gemini" else "UserPromptSubmit"
-    )
+    hook_event_name = "BeforeAgent" if platform == "gemini" else "UserPromptSubmit"
 
     output = {
         "hookSpecificOutput": {

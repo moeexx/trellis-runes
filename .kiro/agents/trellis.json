@@ -1,7 +1,7 @@
 {
   "name": "trellis",
-  "description": "Trellis main agent. The workflow is loaded only when a user prompt begins with 开始任务 or 恢复任务.",
-  "prompt": "# Trellis Agent\n\nDo not load `.trellis/workflow.md`, task state, or Trellis workflow instructions for ordinary conversation. A `userPromptSubmit` hook injects workflow context only after the user starts a prompt with `开始任务` or `恢复任务`; follow that injected entry and breadcrumb for the rest of the current session.\n\n## Constraints\n\n- Do NOT run `git commit` / `git push` / `git merge` unless the user explicitly asks.\n- Keep changes surgical and scoped to the request.\n",
+  "description": "Trellis main agent. The workflow is loaded only when a user prompt begins with 创建任务 or 恢复任务.",
+  "prompt": "# Trellis Agent\n\nDo not load `.trellis/workflow.md`, task state, or Trellis workflow instructions for ordinary conversation. A `userPromptSubmit` hook injects workflow context only after the user starts a prompt with `创建任务` or `恢复任务`; follow that injected entry and breadcrumb for the rest of the current session.\n\n## Constraints\n\n- Do NOT run `git commit` / `git push` / `git merge` unless the user explicitly asks.\n- Keep changes surgical and scoped to the request.\n",
   "tools": [
     "read",
     "write",

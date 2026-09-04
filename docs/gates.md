@@ -20,7 +20,7 @@
 | `context_validate` | `task.py validate` | 无 | `context_ready` |
 | `task_archive` | `task.py archive` | `in_progress → completed` | `task_json_ready`、`archive_branch_metadata`、`archive_destination_available` |
 
-当前已实现的规则：`task_json_ready`、`planning_artifacts_ready`、`context_ready`（校验 `implement.jsonl` / `check.jsonl` 的合法性、路径存在性与非空策展）、`archive_branch_metadata`、`archive_destination_available`、`session_activated_for_create`、`session_activated_for_start`。后两者在可解析稳定会话身份时读取同会话的 workflow activation marker：`开始任务` 可 create/start，`恢复任务` 仅可 start；无会话身份的直接 CLI 调用保持既有降级放行行为。
+当前已实现的规则：`task_json_ready`、`planning_artifacts_ready`、`context_ready`（校验 `implement.jsonl` / `check.jsonl` 的合法性、路径存在性与非空策展）、`archive_branch_metadata`、`archive_destination_available`、`session_activated_for_create`、`session_activated_for_start`。后两者在可解析稳定会话身份时读取同会话的 workflow activation marker：`创建任务` 可 create/start，`恢复任务` 仅可 start；无会话身份的直接 CLI 调用保持既有降级放行行为。
 
 ## 架构与数据流
 
@@ -62,7 +62,7 @@ archive       ──gate.require("task_archive", ...)─────────
 3. **接入命令**。在相应命令里，于任何状态写入之前调用：
    ```python
    if not gate.require("my_gate", GateContext(repo_root=repo_root, task_dir=task_dir)):
-       return 1   # 失败信息已由 require 打到 stderr
+       return 1  # 失败信息已由 require 打到 stderr
    ```
    保持 gate 与受保护的状态转换相邻，不要夹带其他副作用。
 4. **补测试**：

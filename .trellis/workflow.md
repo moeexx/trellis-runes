@@ -12,10 +12,10 @@
 
 默认对话不加载本工作流、任务状态或 workflow-state。只有用户消息首字符精确以以下前缀开头时，hook 才为当前 AI 会话启用工作流：
 
-- `开始任务`：读取当前上下文与本文件，按 Phase 1 分类并进入新任务流程；不会自动创建或启动任务。
+- `创建任务`：读取当前上下文与本文件，按 Phase 1 分类并进入新任务流程；不会自动创建或启动任务。
 - `恢复任务`：读取当前上下文与本文件，根据 active task 的状态和产物定位下一步；不会自动改变任务状态。
 
-启用后，本会话后续消息持续接收 workflow-state，直到会话结束。前置空白、非开头匹配或其它措辞不触发；无稳定会话标识时 hook 显示错误且不跨会话保存状态。会话重置（`/clear`）或新建会话会更换会话标识，原激活不延续，需重新以 `开始任务` / `恢复任务` 触发；回到此前已激活的历史会话时，其激活状态仍有效。
+启用后，本会话后续消息持续接收 workflow-state，直到会话结束。前置空白、非开头匹配或其它措辞不触发；无稳定会话标识时 hook 显示错误且不跨会话保存状态。会话重置（`/clear`）或新建会话会更换会话标识，原激活不延续，需重新以 `创建任务` / `恢复任务` 触发；回到此前已激活的历史会话时，其激活状态仍有效。
 
 ## Trellis 系统
 
@@ -58,7 +58,7 @@ python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
 
 > 权威命令列表：`python3 ./.trellis/scripts/task.py --help`
 
-**当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。在可识别会话中，`create` 需要本会话先由消息首字符的「开始任务」激活，`start` 则接受「开始任务」或「恢复任务」激活；无会话身份的直接 CLI 调用保持降级兼容。状态存于 `.trellis/.runtime/sessions/`。
+**当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。在可识别会话中，`create` 需要本会话先由消息首字符的「创建任务」激活，`start` 则接受「创建任务」或「恢复任务」激活；无会话身份的直接 CLI 调用保持降级兼容。状态存于 `.trellis/.runtime/sessions/`。
 
 ### Central Gate
 
