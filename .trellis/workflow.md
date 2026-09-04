@@ -182,25 +182,3 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <step>
 ```
 
 ---
-
-## Phase 1: Plan
-
-详细步骤契约位于 `.trellis/workflow/steps/`，通过 step id 精确加载：
-
-```bash
-python3 ./.trellis/scripts/get_context.py --mode phase --step <step>
-```
-
-Phase 1 的步骤顺序为：1.0 创建任务 → 1.1 需求探索 → 1.2 研究 → 1.3 配置上下文 → 1.4 激活任务 → 1.5 完成标准。
-
-## Phase 2: Execute
-
-详细步骤契约位于 `.trellis/workflow/steps/`。实现和检查必须遵循任务产物、相关 spec 与对应 step 契约。
-
-步骤顺序为：2.1 实现 → 2.2 质量检查；2.3 回滚按需触发。
-
-## Phase 3: Finish
-
-详细步骤契约位于 `.trellis/workflow/steps/`。
-
-步骤顺序为：3.3 Spec 更新 → 3.4 提交改动 → 3.5 收尾提醒；3.2 Debug 复盘按需触发。3.1 已并入 2.2 与 3.4，编号保留以避免破坏外部引用。
