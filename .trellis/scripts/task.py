@@ -318,6 +318,28 @@ def cmd_finding(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rollback(args: argparse.Namespace) -> int:
+    repo_root = get_repo_root()
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if task_dir is None:
+        return 1
+    try:
+        if args.rollback_action == "record":
+            state = evidence.rollback_record(task_dir, args.phase)
+            print(colored(f"Rollback recorded: {state['phase']} #{state['count']}", Colors.YELLOW))
+            return 1 if state["count"] >= 3 else 0
+        if args.rollback_action == "reset":
+            evidence.rollback_reset(task_dir, args.intervention)
+            print(colored("✓ Rollback circuit reset", Colors.GREEN))
+            return 0
+        evidence.rollback_not_tripped(task_dir)
+        print(colored("✓ Rollback circuit is clear", Colors.GREEN))
+        return 0
+    except evidence.EvidenceError as exc:
+        print(colored(f"Error: {exc}", Colors.RED), file=sys.stderr)
+        return 1
+
+
 def cmd_current(args: argparse.Namespace) -> int:
     """Show active task."""
     repo_root = get_repo_root()
@@ -722,6 +744,15 @@ def main() -> int:
     p_resolve.add_argument("--id", required=True)
     p_resolve.add_argument("--status", required=True)
     p_resolve.add_argument("--reason", default="")
+
+    p_rollback = subparsers.add_parser("rollback", help="Record or reset rollback circuit")
+    p_rollback.add_argument("dir", help="Task directory")
+    rollback_actions = p_rollback.add_subparsers(dest="rollback_action", required=True)
+    p_record = rollback_actions.add_parser("record")
+    p_record.add_argument("--phase", required=True)
+    rollback_actions.add_parser("status")
+    p_reset = rollback_actions.add_parser("reset")
+    p_reset.add_argument("--intervention", required=True)
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
     p_current.add_argument("--source", action="store_true",
@@ -802,6 +833,7 @@ def main() -> int:
         "start": cmd_start,
         "baseline": cmd_baseline,
         "finding": cmd_finding,
+        "rollback": cmd_rollback,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,
