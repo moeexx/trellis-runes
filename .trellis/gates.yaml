@@ -31,3 +31,4 @@ gates:
       - archive_destination_available
       - test_plan_unchanged
       - baseline_diff_clean
+      - findings_resolved

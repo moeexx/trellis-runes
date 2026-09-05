@@ -252,6 +252,16 @@ def _baseline_diff_clean(ctx: GateContext) -> GateFailure | None:
     return None
 
 
+def _findings_resolved(ctx: GateContext) -> GateFailure | None:
+    if _evidence_meta(ctx) is None:
+        return None
+    try:
+        evidence.findings_closed(ctx.task_dir)
+    except evidence.EvidenceError as exc:
+        return GateFailure("findings_resolved", "unresolved_findings", str(exc))
+    return None
+
+
 def _resolve_context_path(file_path: str, ctx: GateContext) -> Path | None:
     """Use task_context's archived self-reference handling without a cycle."""
     from .task_context import _resolve_context_entry_path
@@ -449,6 +459,7 @@ RULES: dict[str, Rule] = {
     "test_plan_ready": _test_plan_ready,
     "test_plan_unchanged": _test_plan_unchanged,
     "baseline_diff_clean": _baseline_diff_clean,
+    "findings_resolved": _findings_resolved,
     "context_ready": _context_ready,
     "archive_branch_metadata": _archive_branch_metadata,
     "archive_destination_available": _archive_destination_available,

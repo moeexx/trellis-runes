@@ -43,6 +43,19 @@ class BaselineEvidenceTests(unittest.TestCase):
         with self.assertRaises(evidence.EvidenceError):
             evidence.diff(self.task)
 
+    def test_findings_require_terminal_states_and_reject_corruption(self) -> None:
+        evidence.append_finding(self.task, "add", severity="P0", title="broken")
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.findings_closed(self.task)
+        evidence.append_finding(self.task, "resolve", id="F-001", status="fixed", reason="test")
+        evidence.append_finding(self.task, "add", severity="P2", title="note")
+        evidence.append_finding(self.task, "resolve", id="F-002", status="accepted", reason="recorded")
+        evidence.findings_closed(self.task)
+        with (self.task / "findings.jsonl").open("a", encoding="utf-8") as output:
+            output.write('{"kind":"status","id":"F-999","status":"fixed"}\n')
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.findings_closed(self.task)
+
 
 if __name__ == "__main__":
     unittest.main()

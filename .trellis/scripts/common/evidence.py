@@ -128,3 +128,70 @@ def read_clean_diff(task_dir: Path) -> dict:
     if payload.get("schema") != BASELINE_SCHEMA or not all(isinstance(payload.get(key), list) and all(isinstance(value, str) for value in payload[key]) for key in ("new", "known", "resolved")):
         raise EvidenceError("diff.json schema is invalid")
     return payload
+
+
+FINDING_SEVERITIES = {"P0", "P1", "P2"}
+FINDING_STATUSES = {"fixed", "wont-fix", "accepted", "reopened"}
+
+
+def _ledger_path(task_dir: Path) -> Path:
+    return task_dir / "findings.jsonl"
+
+
+def read_findings(task_dir: Path) -> list[dict]:
+    path = _ledger_path(task_dir)
+    if not path.is_file():
+        raise EvidenceError("findings.jsonl is missing")
+    rows: list[dict] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise EvidenceError(f"findings.jsonl line {number} is invalid") from exc
+        if not isinstance(row, dict):
+            raise EvidenceError(f"findings.jsonl line {number} is not an object")
+        rows.append(row)
+    return rows
+
+
+def append_finding(task_dir: Path, kind: str, **values: str) -> None:
+    events = [] if not _ledger_path(task_dir).exists() else read_findings(task_dir)
+    if kind == "add":
+        severity, title = values.get("severity", ""), values.get("title", "").strip()
+        if severity not in FINDING_SEVERITIES or not title:
+            raise EvidenceError("finding requires severity P0/P1/P2 and title")
+        identifiers = [int(row["id"][2:]) for row in events if row.get("kind") == "finding" and isinstance(row.get("id"), str) and row["id"].startswith("F-") and row["id"][2:].isdigit()]
+        event = {"kind": "finding", "id": f"F-{max(identifiers, default=0) + 1:03d}", "severity": severity, "title": title}
+    elif kind == "none":
+        event = {"kind": "none", "source": values.get("source", "check")}
+    else:
+        status, identifier, reason = values.get("status", ""), values.get("id", ""), values.get("reason", "").strip()
+        if status not in FINDING_STATUSES or not identifier or (status in {"wont-fix", "accepted"} and not reason):
+            raise EvidenceError("resolution requires id, valid status, and reason for wont-fix/accepted")
+        event = {"kind": "status", "id": identifier, "status": status, "reason": reason}
+    with _ledger_path(task_dir).open("a", encoding="utf-8") as output:
+        output.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def findings_closed(task_dir: Path) -> None:
+    rows = read_findings(task_dir)
+    findings: dict[str, str] = {}
+    states: dict[str, str] = {}
+    for row in rows:
+        if row.get("kind") == "finding":
+            identifier, severity = row.get("id"), row.get("severity")
+            if not isinstance(identifier, str) or identifier in findings or severity not in FINDING_SEVERITIES:
+                raise EvidenceError("findings ledger has invalid or duplicate finding")
+            findings[identifier] = severity
+            states[identifier] = "open"
+        elif row.get("kind") == "status":
+            identifier, status = row.get("id"), row.get("status")
+            if identifier not in findings or status not in FINDING_STATUSES:
+                raise EvidenceError("findings ledger has orphan or invalid status")
+            states[identifier] = status
+        elif row.get("kind") != "none":
+            raise EvidenceError("findings ledger has unknown event")
+    for identifier, severity in findings.items():
+        permitted = {"fixed", "wont-fix"} if severity in {"P0", "P1"} else {"fixed", "wont-fix", "accepted"}
+        if states[identifier] not in permitted:
+            raise EvidenceError(f"{severity} finding {identifier} is unresolved")

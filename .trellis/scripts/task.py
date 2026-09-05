@@ -304,6 +304,20 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_finding(args: argparse.Namespace) -> int:
+    repo_root = get_repo_root()
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if task_dir is None:
+        return 1
+    try:
+        evidence.append_finding(task_dir, args.finding_action, **vars(args))
+    except evidence.EvidenceError as exc:
+        print(colored(f"Error: {exc}", Colors.RED), file=sys.stderr)
+        return 1
+    print(colored("✓ Finding ledger updated", Colors.GREEN))
+    return 0
+
+
 def cmd_current(args: argparse.Namespace) -> int:
     """Show active task."""
     repo_root = get_repo_root()
@@ -695,6 +709,19 @@ def main() -> int:
     p_snapshot.add_argument("--phase", choices=("before", "after"), required=True)
     p_snapshot.add_argument("--command", action="append", default=[], help="id=command (repeatable)")
     baseline_actions.add_parser("diff", help="Write new/known/resolved failures")
+
+    p_finding = subparsers.add_parser("finding", help="Append a finding ledger event")
+    p_finding.add_argument("dir", help="Task directory")
+    finding_actions = p_finding.add_subparsers(dest="finding_action", required=True)
+    p_addfinding = finding_actions.add_parser("add")
+    p_addfinding.add_argument("--severity", required=True)
+    p_addfinding.add_argument("--title", required=True)
+    p_none = finding_actions.add_parser("none")
+    p_none.add_argument("--source", default="check")
+    p_resolve = finding_actions.add_parser("resolve")
+    p_resolve.add_argument("--id", required=True)
+    p_resolve.add_argument("--status", required=True)
+    p_resolve.add_argument("--reason", default="")
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
     p_current.add_argument("--source", action="store_true",
@@ -774,6 +801,7 @@ def main() -> int:
         "list-context": cmd_list_context,
         "start": cmd_start,
         "baseline": cmd_baseline,
+        "finding": cmd_finding,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,
