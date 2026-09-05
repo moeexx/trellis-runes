@@ -22,6 +22,12 @@
 
 当前已实现的规则：`task_json_ready`、`planning_artifacts_ready`、`context_ready`（校验 `implement.jsonl` / `check.jsonl` 的合法性、路径存在性与非空策展）、`archive_branch_metadata`、`archive_destination_available`、`session_activated_for_create`、`session_activated_for_start`。后两者在可解析稳定会话身份时读取同会话的 workflow activation marker：`创建任务` 可 create/start，`恢复任务` 仅可 start；无会话身份的直接 CLI 调用保持既有降级放行行为。
 
+## 证据门禁契约（v1）
+
+仅 `task.json.meta.evidence_gates_version = "1"` 的完整/普通档任务受以下规则约束；没有该字段的历史任务保持原有 archive 行为。启用任务必须在规划时写入 `meta.evidence_test_level`，值仅可为 `unit`、`unit+api` 或 `unit+api+e2e`。`unit` 要求 `test-plan-unit.md`，其余两档额外要求 `test-plan-integration.md`。
+
+`task_start` 将所需方案的字节 SHA-256 写入 `meta.test_plan_sha256`（文件名到 hash 的 object），并与状态转换使用同一次 task.json 写入。归档时必须重新计算；缺失、类型错误、文件缺失或 hash 漂移均拒绝。其余证据产物为 `baseline/{before,after,diff}.json`、`findings.jsonl` 和 `delivery-checklist.json`；后续 rule 均只读取并验证这些可复算事实，不能相信 agent 的自报结论。
+
 ## 架构与数据流
 
 ```
