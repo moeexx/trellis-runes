@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -195,3 +196,56 @@ def findings_closed(task_dir: Path) -> None:
         permitted = {"fixed", "wont-fix"} if severity in {"P0", "P1"} else {"fixed", "wont-fix", "accepted"}
         if states[identifier] not in permitted:
             raise EvidenceError(f"{severity} finding {identifier} is unresolved")
+
+
+def delivery_checklist_valid(task_dir: Path) -> None:
+    path = task_dir / "delivery-checklist.json"
+    payload = _read_object(path)
+    criteria = payload.get("acceptance_criteria")
+    if payload.get("schema") != 1 or not isinstance(criteria, list):
+        raise EvidenceError("delivery checklist schema is invalid")
+    prd = (task_dir / "prd.md").read_text(encoding="utf-8")
+    expected = set(re.findall(r"\b(AC-\d+)\b", prd))
+    actual: set[str] = set()
+    for item in criteria:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or item.get("status") != "passed" or not isinstance(item.get("evidence"), str) or not item["evidence"].strip():
+            raise EvidenceError("delivery checklist has invalid acceptance criterion")
+        actual.add(item["id"])
+    if expected != actual:
+        raise EvidenceError("delivery checklist AC ids do not match prd")
+    for key, expected_path in (("baseline_diff", "baseline/diff.json"), ("findings", "findings.jsonl")):
+        if payload.get(key) != expected_path or not (task_dir / expected_path).is_file():
+            raise EvidenceError(f"delivery checklist lacks {key} evidence")
+
+
+def rollback_record(task_dir: Path, phase: str) -> dict:
+    task_json = task_dir / "task.json"
+    data = _read_object(task_json)
+    meta = data.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        raise EvidenceError("task meta is invalid")
+    current = meta.get("rollbacks")
+    if not isinstance(current, dict) or current.get("phase") != phase:
+        current = {"phase": phase, "count": 0, "events": []}
+    current["count"] = int(current.get("count", 0)) + 1
+    current.setdefault("events", []).append({"at": _now(), "action": "rollback", "phase": phase})
+    meta["rollbacks"] = current
+    task_json.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return current
+
+
+def rollback_reset(task_dir: Path, intervention: str) -> None:
+    if not intervention.strip():
+        raise EvidenceError("rollback reset requires human intervention detail")
+    task_json = task_dir / "task.json"
+    data = _read_object(task_json)
+    meta = data.setdefault("meta", {})
+    meta["rollbacks"] = {"phase": None, "count": 0, "events": [{"at": _now(), "action": "reset", "intervention": intervention.strip()}]}
+    task_json.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def rollback_not_tripped(task_dir: Path) -> None:
+    data = _read_object(task_dir / "task.json")
+    state = (data.get("meta") or {}).get("rollbacks")
+    if isinstance(state, dict) and state.get("count", 0) >= 3:
+        raise EvidenceError("rollback circuit breaker is tripped")

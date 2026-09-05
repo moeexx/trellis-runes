@@ -56,6 +56,23 @@ class BaselineEvidenceTests(unittest.TestCase):
         with self.assertRaises(evidence.EvidenceError):
             evidence.findings_closed(self.task)
 
+    def test_delivery_and_rollback_contracts(self) -> None:
+        (self.task / "task.json").write_text('{"meta": {}}', encoding="utf-8")
+        (self.task / "prd.md").write_text("- AC-1: works\n", encoding="utf-8")
+        baseline = self.task / "baseline"
+        baseline.mkdir()
+        (baseline / "diff.json").write_text('{"schema":1,"new":[],"known":[],"resolved":[]}', encoding="utf-8")
+        (self.task / "findings.jsonl").write_text('{"kind":"none","source":"check"}\n', encoding="utf-8")
+        (self.task / "delivery-checklist.json").write_text(json.dumps({"schema": 1, "acceptance_criteria": [{"id": "AC-1", "status": "passed", "evidence": "test"}], "baseline_diff": "baseline/diff.json", "findings": "findings.jsonl"}), encoding="utf-8")
+        evidence.delivery_checklist_valid(self.task)
+        evidence.rollback_record(self.task, "2.2")
+        evidence.rollback_record(self.task, "2.2")
+        evidence.rollback_record(self.task, "2.2")
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.rollback_not_tripped(self.task)
+        evidence.rollback_reset(self.task, "developer reviewed the failure")
+        evidence.rollback_not_tripped(self.task)
+
 
 if __name__ == "__main__":
     unittest.main()

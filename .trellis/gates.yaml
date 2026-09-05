@@ -32,3 +32,5 @@ gates:
       - test_plan_unchanged
       - baseline_diff_clean
       - findings_resolved
+      - delivery_checklist_passed
+      - rollback_circuit_not_tripped

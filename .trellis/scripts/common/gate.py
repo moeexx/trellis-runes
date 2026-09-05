@@ -262,6 +262,26 @@ def _findings_resolved(ctx: GateContext) -> GateFailure | None:
     return None
 
 
+def _delivery_checklist_passed(ctx: GateContext) -> GateFailure | None:
+    if _evidence_meta(ctx) is None:
+        return None
+    try:
+        evidence.delivery_checklist_valid(ctx.task_dir)
+    except evidence.EvidenceError as exc:
+        return GateFailure("delivery_checklist_passed", "invalid_delivery_checklist", str(exc))
+    return None
+
+
+def _rollback_circuit_not_tripped(ctx: GateContext) -> GateFailure | None:
+    if _evidence_meta(ctx) is None:
+        return None
+    try:
+        evidence.rollback_not_tripped(ctx.task_dir)
+    except evidence.EvidenceError as exc:
+        return GateFailure("rollback_circuit_not_tripped", "rollback_circuit_tripped", str(exc))
+    return None
+
+
 def _resolve_context_path(file_path: str, ctx: GateContext) -> Path | None:
     """Use task_context's archived self-reference handling without a cycle."""
     from .task_context import _resolve_context_entry_path
@@ -460,6 +480,8 @@ RULES: dict[str, Rule] = {
     "test_plan_unchanged": _test_plan_unchanged,
     "baseline_diff_clean": _baseline_diff_clean,
     "findings_resolved": _findings_resolved,
+    "delivery_checklist_passed": _delivery_checklist_passed,
+    "rollback_circuit_not_tripped": _rollback_circuit_not_tripped,
     "context_ready": _context_ready,
     "archive_branch_metadata": _archive_branch_metadata,
     "archive_destination_available": _archive_destination_available,
