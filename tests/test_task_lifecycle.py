@@ -439,6 +439,19 @@ class TaskLifecycleTests(unittest.TestCase):
             self.assertEqual(task.cmd_start(self.start_args()), 0)
         self.assertEqual(json.loads(task_json.read_text(encoding="utf-8"))["meta"]["test_plan_sha256"]["test-plan-unit.md"], "frozen")
 
+    def test_default_prd_uses_documented_six_section_contract(self) -> None:
+        content = task_store._default_prd_content("Example", "Goal")
+        for heading in (
+            "## Overview",
+            "## User Stories & AC",
+            "## NFR",
+            "## Constraints & Boundaries",
+            "## Data Model",
+            "## Open Questions",
+        ):
+            with self.subTest(heading=heading):
+                self.assertIn(heading, content)
+
 
 if __name__ == "__main__":
     unittest.main()

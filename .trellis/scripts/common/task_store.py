@@ -268,23 +268,29 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
     heading = title.strip() or "Untitled task"
     return f"""# {heading}
 
-## Goal
+## Overview
 
 {goal}
 
-## Requirements
+## User Stories & AC
+
+- [ ] AC-1: TBD
+
+## NFR
+
+- N/A
+
+## Constraints & Boundaries
+
+- N/A
+
+## Data Model
+
+- N/A
+
+## Open Questions
 
 - TBD
-
-## Acceptance Criteria
-
-- [ ] TBD
-
-## Notes
-
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
 """
 
 
