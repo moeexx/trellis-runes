@@ -322,6 +322,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     meta = _parse_meta_pairs(getattr(args, "meta", None))
     if meta is None:
         return 1
+    if meta.get("trellis_tier") in {"full", "normal"}:
+        meta["evidence_gates_version"] = "1"
 
     # Validate --package (CLI source: fail-fast)
     package: str | None = getattr(args, "package", None)

@@ -13,6 +13,7 @@ gates:
     require:
       - task_json_ready
       - planning_artifacts_ready
+      - test_plan_ready
       - context_ready
       - session_activated_for_start
 
@@ -28,3 +29,5 @@ gates:
       - task_json_ready
       - archive_branch_metadata
       - archive_destination_available
+      - test_plan_unchanged
+      - baseline_diff_clean

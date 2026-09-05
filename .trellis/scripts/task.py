@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -113,6 +114,12 @@ def _record_start_state(
     if data.get("status") == "planning":
         data["status"] = "in_progress"
         applied.append(f"✓ Status: planning → in_progress{label}")
+
+    meta = data.get("meta")
+    if isinstance(meta, dict) and meta.get("evidence_gates_version") == "1":
+        level = meta.get("evidence_test_level")
+        required = ["test-plan-unit.md"] if level == "unit" else ["test-plan-unit.md", "test-plan-integration.md"]
+        meta["test_plan_sha256"] = {name: hashlib.sha256((task_json_path.parent / name).read_bytes()).hexdigest() for name in required}
 
     # Only fill an empty field: an explicit `set-branch` must survive a later
     # `start` (re-starting a task after a checkout is a normal thing to do).

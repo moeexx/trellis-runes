@@ -307,6 +307,22 @@ class GateEngineTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn("no longer exists locally", stderr.getvalue())
 
+    def test_evidence_task_requires_plans_unchanged_hash_and_clean_diff(self) -> None:
+        self.write_task()
+        (self.task / "task.json").write_text(json.dumps({"status": "planning", "meta": {"evidence_gates_version": "1", "evidence_test_level": "unit"}}), encoding="utf-8")
+        (self.task / "prd.md").write_text("# Plan\n", encoding="utf-8")
+        result = gate.evaluate("task_start", self.context())
+        self.assertEqual(result.failures[-1].code, "missing_test_plan")
+        plan = self.task / "test-plan-unit.md"
+        plan.write_text("# unit\n", encoding="utf-8")
+        self.assertTrue(gate.evaluate("task_start", self.context()).ok)
+        data = json.loads((self.task / "task.json").read_text(encoding="utf-8"))
+        data["status"] = "in_progress"
+        data["meta"]["test_plan_sha256"] = {"test-plan-unit.md": "wrong"}
+        (self.task / "task.json").write_text(json.dumps(data), encoding="utf-8")
+        result = gate.evaluate("task_archive", self.context())
+        self.assertIn("test_plan_hash_mismatch", [failure.code for failure in result.failures])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,7 @@ their own copies of lifecycle enforcement.
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ from .task_utils import archive_destination_for
 from .trellis_config import parse_simple_yaml
 from .active_task import resolve_context_key
 from .workflow_activation import activation_entry
+from . import evidence
 
 
 POLICY_FILE = "gates.yaml"
@@ -192,6 +194,61 @@ def _planning_artifacts_ready(ctx: GateContext) -> GateFailure | None:
             message="prd.md cannot be read",
             details={"path": str(path)},
         )
+    return None
+
+
+def _evidence_meta(ctx: GateContext) -> dict[str, Any] | None:
+    data, _reason = _task_json(ctx)
+    if data is None:
+        return None
+    meta = data.get("meta")
+    return meta if isinstance(meta, dict) and meta.get("evidence_gates_version") == "1" else None
+
+
+def _required_test_plans(ctx: GateContext) -> tuple[list[str] | None, GateFailure | None]:
+    meta = _evidence_meta(ctx)
+    if meta is None:
+        return [], None
+    level = meta.get("evidence_test_level")
+    required = {"unit": ["test-plan-unit.md"], "unit+api": ["test-plan-unit.md", "test-plan-integration.md"], "unit+api+e2e": ["test-plan-unit.md", "test-plan-integration.md"]}.get(level)
+    if required is None:
+        return None, GateFailure("test_plan_ready", "invalid_test_level", "evidence_test_level must be unit, unit+api, or unit+api+e2e")
+    return required, None
+
+
+def _test_plan_ready(ctx: GateContext) -> GateFailure | None:
+    required, failure = _required_test_plans(ctx)
+    if failure or required is None:
+        return failure
+    missing = [name for name in required if not (ctx.task_dir / name).is_file()]
+    if missing:
+        return GateFailure("test_plan_ready", "missing_test_plan", "required test plan is missing", {"files": ", ".join(missing)})
+    return None
+
+
+def _test_plan_unchanged(ctx: GateContext) -> GateFailure | None:
+    required, failure = _required_test_plans(ctx)
+    if failure or required is None or not required:
+        return failure
+    meta = _evidence_meta(ctx) or {}
+    stamp = meta.get("test_plan_sha256")
+    if not isinstance(stamp, dict):
+        return GateFailure("test_plan_unchanged", "missing_test_plan_hash", "test plan hash was not frozen at start")
+    drifted = [name for name in required if not isinstance(stamp.get(name), str) or not (ctx.task_dir / name).is_file() or hashlib.sha256((ctx.task_dir / name).read_bytes()).hexdigest() != stamp[name]]
+    if drifted:
+        return GateFailure("test_plan_unchanged", "test_plan_hash_mismatch", "test plan changed after start", {"files": ", ".join(drifted)})
+    return None
+
+
+def _baseline_diff_clean(ctx: GateContext) -> GateFailure | None:
+    if _evidence_meta(ctx) is None:
+        return None
+    try:
+        payload = evidence.read_clean_diff(ctx.task_dir)
+    except evidence.EvidenceError as exc:
+        return GateFailure("baseline_diff_clean", "invalid_baseline_diff", str(exc))
+    if payload["new"]:
+        return GateFailure("baseline_diff_clean", "new_baseline_failures", "baseline contains new failures", {"count": str(len(payload["new"]))})
     return None
 
 
@@ -389,6 +446,9 @@ def _session_activated_for_start(ctx: GateContext) -> GateFailure | None:
 RULES: dict[str, Rule] = {
     "task_json_ready": _task_json_ready,
     "planning_artifacts_ready": _planning_artifacts_ready,
+    "test_plan_ready": _test_plan_ready,
+    "test_plan_unchanged": _test_plan_unchanged,
+    "baseline_diff_clean": _baseline_diff_clean,
     "context_ready": _context_ready,
     "archive_branch_metadata": _archive_branch_metadata,
     "archive_destination_available": _archive_destination_available,
