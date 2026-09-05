@@ -75,6 +75,7 @@ from common.task_context import (
     cmd_validate,
     cmd_list_context,
 )
+from common import evidence
 
 
 # =============================================================================
@@ -274,6 +275,25 @@ def cmd_finish(args: argparse.Namespace) -> int:
 
     if task_json_path.is_file():
         run_task_hooks("after_finish", task_json_path, repo_root)
+    return 0
+
+
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Capture or compare deterministic test failure baselines."""
+    repo_root = get_repo_root()
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if task_dir is None:
+        return 1
+    try:
+        if args.baseline_action == "snapshot":
+            commands = evidence.parse_commands(args.command or [])
+            target = evidence.snapshot(task_dir, repo_root, args.phase, commands)
+        else:
+            target = evidence.diff(task_dir)
+    except evidence.EvidenceError as exc:
+        print(colored(f"Error: {exc}", Colors.RED), file=sys.stderr)
+        return 1
+    print(colored(f"✓ Baseline evidence: {target}", Colors.GREEN))
     return 0
 
 
@@ -660,6 +680,14 @@ def main() -> int:
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
+
+    p_baseline = subparsers.add_parser("baseline", help="Capture or diff test baseline evidence")
+    p_baseline.add_argument("dir", help="Task directory")
+    baseline_actions = p_baseline.add_subparsers(dest="baseline_action", required=True)
+    p_snapshot = baseline_actions.add_parser("snapshot", help="Run evidence commands")
+    p_snapshot.add_argument("--phase", choices=("before", "after"), required=True)
+    p_snapshot.add_argument("--command", action="append", default=[], help="id=command (repeatable)")
+    baseline_actions.add_parser("diff", help="Write new/known/resolved failures")
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
     p_current.add_argument("--source", action="store_true",
@@ -738,6 +766,7 @@ def main() -> int:
         "validate": cmd_validate,
         "list-context": cmd_list_context,
         "start": cmd_start,
+        "baseline": cmd_baseline,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,
