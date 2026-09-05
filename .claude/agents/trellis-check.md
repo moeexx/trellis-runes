@@ -113,3 +113,9 @@ If failed, fix issues and re-run.
 
 Checked X files, found Y issues, all fixed.
 ```
+
+## Handoff Status and Findings
+
+Start every report with exactly one of `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`,
+or `NEEDS_CONTEXT`. Include explicit `P0`, `P1`, and `P2` sections, writing
+`none` for every severity without findings.

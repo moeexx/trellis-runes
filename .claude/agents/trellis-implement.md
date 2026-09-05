@@ -108,3 +108,8 @@ Run project's lint and typecheck commands to verify changes.
 - Don't add unnecessary abstractions
 - Only do what's required, no over-engineering
 - Keep code readable
+
+## Handoff Status
+
+Start every report with exactly one of `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`,
+or `NEEDS_CONTEXT`; include the reason whenever it is not `DONE`.

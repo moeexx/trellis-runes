@@ -39,6 +39,9 @@ When you find a mechanical, local issue:
 3. Record what you changed and why.
 
 Output format:
+## Status
+DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
+
 ## Findings (fixed)
 - File: <path>
 - Issue: <what was wrong>
@@ -53,4 +56,6 @@ List every issue you did not fix — the ones you could not (missing product dec
 - Tests: pass/fail (if applicable)
 
 If no issues are found, say so explicitly after verifying lint/type-check pass.
+Always include `## Findings Ledger` with `P0`, `P1`, and `P2`; write `none`
+for a severity with no findings.
 """

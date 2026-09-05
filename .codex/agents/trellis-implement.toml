@@ -31,6 +31,7 @@ Rules:
 - Do not make destructive git changes unless explicitly asked.
 
 Before finishing, summarize:
+- Handoff status: DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT
 - Files changed
 - Tests/checks run
 - Remaining risks or follow-ups

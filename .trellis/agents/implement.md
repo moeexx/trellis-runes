@@ -53,6 +53,11 @@ The supervising main session owns commits. Report what changed; do not commit on
 ## Report Format
 
 ```
+
+## Handoff Status
+
+Start every report with exactly one of `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`,
+or `NEEDS_CONTEXT`; include the reason whenever it is not `DONE`.
 ## Implementation Complete
 
 ### Files Modified

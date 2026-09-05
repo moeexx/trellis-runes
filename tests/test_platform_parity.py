@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import json
+import re
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,8 +203,8 @@ class PlatformParityTests(unittest.TestCase):
         source = self.hook_source("claude")
         mutations = {
             "workflow activation call": source.replace(
-                "resolve_workflow_activation(root, input_data.get(\"prompt\"), input_data, platform)",
-                "resolve_workflow_activation_removed(root, input_data.get(\"prompt\"), input_data, platform)",
+                "return resolve_workflow_activation(",
+                "return resolve_workflow_activation_removed(",
                 1,
             ),
             "critical helper": source.replace(
@@ -217,6 +219,25 @@ class PlatformParityTests(unittest.TestCase):
             with self.subTest(member=member):
                 with self.assertRaises(AssertionError):
                     self.assert_shared_contract(extract_contract(mutated_source, member))
+
+    def test_agents_keep_evidence_report_contract(self) -> None:
+        statuses = {"DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"}
+        paths = (
+            ".trellis/agents/implement.md", ".trellis/agents/check.md",
+            ".claude/agents/trellis-implement.md", ".claude/agents/trellis-check.md",
+            ".qoder/agents/trellis-implement.md", ".qoder/agents/trellis-check.md",
+            ".codex/agents/trellis-implement.toml", ".codex/agents/trellis-check.toml",
+        )
+        for relative in paths:
+            with self.subTest(relative=relative):
+                self.assertTrue(statuses <= set(re.findall(r"DONE(?:_WITH_CONCERNS)?|BLOCKED|NEEDS_CONTEXT", (ROOT / relative).read_text(encoding="utf-8"))))
+        for name in ("trellis-implement", "trellis-check"):
+            data = json.loads((ROOT / f".kiro/agents/{name}.json").read_text(encoding="utf-8"))
+            self.assertTrue(statuses <= set(re.findall(r"DONE(?:_WITH_CONCERNS)?|BLOCKED|NEEDS_CONTEXT", data["evidenceReportContract"])))
+        for relative in (".trellis/agents/check.md", ".claude/agents/trellis-check.md", ".qoder/agents/trellis-check.md", ".codex/agents/trellis-check.toml"):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            for severity in ("P0", "P1", "P2"):
+                self.assertIn(severity, source)
 
     def assert_session_start_contract(
         self, contract: SessionStartContract, expected_imports: frozenset[str]
