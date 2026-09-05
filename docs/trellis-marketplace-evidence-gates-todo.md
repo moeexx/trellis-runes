@@ -69,3 +69,11 @@
 - [ ] 手工验证完整档：缺少所需证据时 gate 拒绝；补齐证据后放行。
 - [ ] 手工验证极简档：不创建 task、不经过 Central Gate，原有行为不变。
 - [ ] 检查各平台副本无漂移。
+
+## 实施状态
+
+- [x] 阶段 1：测试方案契约、统一交接状态和跨平台解析测试。
+- [x] 阶段 2：baseline、测试方案 hash 与 findings archive gate。
+- [x] 阶段 3：delivery checklist 与 rollback circuit breaker。
+- [x] 阶段 4：只读 review/verify agent 与平台静态契约。
+- [x] 全量测试及临时完整档 end-to-end archive smoke test。

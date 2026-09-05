@@ -28,6 +28,10 @@
 
 `task_start` 将所需方案的字节 SHA-256 写入 `meta.test_plan_sha256`（文件名到 hash 的 object），并与状态转换使用同一次 task.json 写入。归档时必须重新计算；缺失、类型错误、文件缺失或 hash 漂移均拒绝。其余证据产物为 `baseline/{before,after,diff}.json`、`findings.jsonl` 和 `delivery-checklist.json`；后续 rule 均只读取并验证这些可复算事实，不能相信 agent 的自报结论。
 
+启用任务的 `task_start` 额外执行 `test_plan_ready`；`task_archive` 额外执行 `test_plan_unchanged`、`baseline_diff_clean`、`findings_resolved`、`delivery_checklist_passed` 和 `rollback_circuit_not_tripped`。baseline 的 `new` failure、任何损坏或未闭环 finding、AC 清单与 PRD 不匹配、或连续三次同 phase rollback 都 fail-closed 拒绝 archive。
+
+证据写入入口均为 `task.py`：`baseline <task> snapshot|diff`、`finding <task> add|none|resolve`、`rollback <task> record|status|reset`。rollback reset 必须带人工介入说明；该说明成为 task metadata 中的审计事件。
+
 ## 架构与数据流
 
 ```
