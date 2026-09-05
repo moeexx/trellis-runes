@@ -60,6 +60,15 @@ python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
 
 **当前任务机制**：`create` 创建目录，会话身份可用时自动设为激活任务；`start` 把 `task.json.status` 从 `planning` 翻转为 `in_progress`；`finish` 清除当前会话指针（status 不变）；`archive` 写 `status=completed` 并移到 `archive/`。在可识别会话中，`create` 需要本会话先由消息首字符的「创建任务」激活，`start` 则接受「创建任务」或「恢复任务」激活；无会话身份的直接 CLI 调用保持降级兼容。状态存于 `.trellis/.runtime/sessions/`。
 
+### Workspace 系统
+
+极简档（不建任务）的调研/PRD 片段落盘到 `.trellis/workspace/<developer>/journal-N.md`：
+
+```bash
+python3 ./.trellis/scripts/add_session.py --title "<title>" --summary "<summary>" --change "<bullet>" --commit -
+# 追加一条 session 记录到 journal，超 2000 行自动轮转；--commit - 表示纯规划/调研session（尚无提交）
+```
+
 ### Central Gate
 
 确定性的 lifecycle 前置条件由 `.trellis/scripts/common/gate.py` 读取 `.trellis/gates.yaml` 统一执行。正常工作流调用 `task.py create`、`task.py start`、`task.py validate` 和 `task.py archive`；gate 失败时按返回的具体项修复并重试。`task_archive` 对缺失或损坏的 `task.json` 有意 fail-closed：先手工恢复为有效 JSON object，再重试；archive 没有重建或绕过该检查的命令。policy 是仓库内配置，具有与仓库写权限相同的 trust boundary；本地没有关闭或绕过 gate 的命令接口。新增/改动门禁见 `docs/gates.md`。
@@ -75,16 +84,24 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # 某工作
 ## Phase Index
 
 ```
-Phase 1: Plan    → 分类请求、取得创建任务许可，然后撰写规划产物
-Phase 2: Execute → 仅在任务状态为 in_progress 后实施
+Phase 1: Plan    → 选定档位（完整/普通/极简），然后按档位撰写规划产物
+Phase 2: Execute → 完整/普通档仅在任务状态为 in_progress 后实施；极简档选定后直接实施
 Phase 3: Finish  → 验证、更新 spec、提交、收尾
 ```
 
-### 请求分类
+### 任务分级
 
-- 简单对话或小任务：只询问本次是否需要创建 Trellis task。若用户说不，则本会话跳过 Trellis。
-- 复杂任务：询问是否允许创建 Trellis task 并进入规划。若用户说不，不要做宽泛的内联实现；解释、澄清范围，或建议拆成更小任务。
+尚无 active task 时，创建任何 Trellis task 之前，先向用户提出单选题，展示以下三档摘要，等待用户选择后再继续（支持结构化选择题的平台用自身机制展示；其余平台以枚举形式提问）：
+
+| 档位 | 适用场景 | 涉及步骤 | 是否建任务 |
+|---|---|---|---|
+| **完整** | 复杂/多交付物/跨包改动/需求有歧义 | 1.0,1.1,(1.2),1.3,1.4,2.1,2.2,(2.3),(3.2),3.3,3.4 | 是；`design.md`/`implement.md` 按需维护 |
+| **普通** | 需求明确的中等任务 | 1.0,1.1,1.4,2.1,2.2,3.3,3.4（跳过 1.2/1.3，只维护 `prd.md`） | 是；仅 `prd.md`，不建 `design.md`/`implement.md`/manifest |
+| **极简** | 调研或小改动，不想走任务机制 | 产出一段 PRD 片段/调研笔记（落盘到 Workspace 系统），直接进入实现；不跑 1.0/1.3/1.4/3.3/3.4 | 否；全程不调用 `task.py create/start/archive`，Central Gate 不介入 |
+
+- 档位在创建任务前一次性选定，选定后不中途切换；需要更重的流程时，走完当前档，或另开一个更高档的任务。
 - 用户同意创建任务 ≠ 同意开始实现。规划仍要先做。
+- 完整/普通档在 `task.py create` 时用 `--meta trellis_tier=full`（或 `normal`）记录档位，供 `恢复任务` 时从 `task.json.meta` 读回，无需重新推断。
 
 ### 规划产物
 
@@ -92,7 +109,7 @@ Phase 3: Finish  → 验证、更新 spec、提交、收尾
 - `design.md` —— 复杂任务的技术设计：边界、契约、数据流、取舍、兼容性、上线 / 回滚形态。
 - `implement.md` —— 复杂任务的执行计划：有序检查清单、验证命令、评审关卡、回滚节点。
 - `implement.jsonl` / `check.jsonl` —— 子代理上下文清单（spec + 研究），不替代 `implement.md`。
-- 轻量任务可只有 PRD；复杂任务的 `design.md` / `implement.md` 由规划流程按语义需要维护。
+- 普通档只有 PRD；完整档的 `design.md` / `implement.md` 由规划流程按语义需要维护。
 
 ### 父 / 子任务树
 
@@ -105,9 +122,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 ```
 
 [workflow-state:no_task]
-当前没有激活任务。先对本次会话分类，在创建任何 Trellis task 之前先取得创建任务许可。
-简单对话 / 小任务：只询问本次是否需要创建 Trellis task。若用户说不，则本会话跳过 Trellis。
-复杂任务：询问用户是否允许创建 Trellis task 并进入规划阶段。若用户说不，解释、澄清范围，或建议拆成更小的任务。
+当前没有激活任务。创建任何 Trellis task 之前，先让用户从「任务分级」的完整/普通/极简三档中单选一档；若用户选极简，不创建任务，直接进入实现前的 PRD 片段/调研（落盘到 Workspace 系统）。
 [/workflow-state:no_task]
 
 [workflow-state:task_error]
@@ -130,25 +145,23 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 > Codex 内联变体（planning-inline / in_progress-inline）与已失效的 completed 块已省略，见 `docs/workflow-backup.md`。
 
 ### Phase 1：计划（Plan）
-- [1.0 创建任务](./workflow/steps/1.0.md) `[required · once]`（仅在有任务创建许可之后）
-- [1.1 需求探索](./workflow/steps/1.1.md) `[required · repeatable]`（`prd.md`；复杂任务按需维护 `design.md` + `implement.md`）
-- [1.2 研究](./workflow/steps/1.2.md) `[optional · repeatable]`
-- [1.3 配置上下文](./workflow/steps/1.3.md) `[required · once]`（子代理分发平台；内联平台跳过）
-- [1.4 激活任务](./workflow/steps/1.4.md) `[required · once]`（评审后运行 `task.py start`；central gate 通过后 status → in_progress）
-- [1.5 完成标准](./workflow/steps/1.5.md)
+- [1.0 创建任务](./workflow/steps/1.0.md) `[required · once]`（完整/普通档；仅在选定档位之后；极简档跳过）
+- [1.1 需求探索](./workflow/steps/1.1.md) `[required · repeatable]`（`prd.md`；完整档按需维护 `design.md` + `implement.md`；极简档产出落盘到 Workspace 系统而非任务目录）
+- [1.2 研究](./workflow/steps/1.2.md) `[optional · repeatable]`（完整档）
+- [1.3 配置上下文](./workflow/steps/1.3.md) `[required · once]`（仅完整档 + 子代理分发平台；普通档跳过，子代理会 fallback 读 `prd.md`；内联平台跳过）
+- [1.4 激活任务](./workflow/steps/1.4.md) `[required · once]`（完整/普通档；评审后运行 `task.py start`；central gate 通过后 status → in_progress；极简档跳过）
 
 ### Phase 2：执行（Execute）
 - [2.1 实现](./workflow/steps/2.1.md) `[required · repeatable]`
-- [2.2 质量检查](./workflow/steps/2.2.md) `[required · repeatable]`
+- [2.2 质量检查](./workflow/steps/2.2.md) `[required · repeatable]`（极简档不强制派发 `trellis-check`，但仍需自行确认测试/lint 通过）
 - [2.3 回滚](./workflow/steps/2.3.md) `[on demand]`
 
 ### Phase 3：收尾（Finish）
 - [3.2 Debug 复盘](./workflow/steps/3.2.md) `[on demand]`
-- [3.3 Spec 更新](./workflow/steps/3.3.md) `[required · once]`
+- [3.3 Spec 更新](./workflow/steps/3.3.md) `[required · once]`（完整/普通档；极简档跳过）
 - [3.4 提交改动](./workflow/steps/3.4.md) `[required · once]`
-- [3.5 收尾提醒](./workflow/steps/3.5.md)
 
-> 注：3.1 已并入 2.2（最后一轮全范围检查）与 3.4（提交前奏），编号保留以避免破坏外部引用。
+> 注：3.1 已并入 2.2（最后一轮全范围检查）与 3.4（提交前奏）；1.5 已并入 1.4；3.5 已并入 3.4；编号均保留以避免破坏外部引用。
 
 ### 规则
 
@@ -157,6 +170,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 3. 阶段可以回退（如 Execute 暴露 prd 缺陷 → 回计划修正再重新进入执行）
 4. `[once]` 步骤若输出已存在则跳过，不重复执行
 5. 规划产物与语义收敛共同决定下一步；`design.md` / `implement.md` 是否需要由规划流程判断
+6. 档位（完整/普通/极简）在创建任务前一次性选定，不中途切换；需要更重的流程时走完当前档或另开更高档任务
 
 ### 激活任务路由
 
@@ -171,7 +185,7 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>  # 解除关�
 ### 护栏
 
 - 创建任务许可 ≠ 实现许可；实现等产物评审后 `task.py start`。
-- 复杂任务的 `design.md` + `implement.md` 判断仍由规划流程负责；确定性前置条件由 `task.py start` 的 central gate 执行。
+- 完整档的 `design.md` + `implement.md` 判断仍由规划流程负责；确定性前置条件由 `task.py start` 的 central gate 执行。
 - 规划必须落盘到任务产物；报告完成前必须先运行检查。
 
 ### 加载步骤详情
