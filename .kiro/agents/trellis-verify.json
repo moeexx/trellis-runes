@@ -1,0 +1,1 @@
+{"name":"trellis-verify","description":"Read-only independent verifier.","prompt":"Do not edit files or run git write commands. Return PASS or FAIL with evidence and risks.","tools":["read","shell","glob","grep"],"allowedTools":["read","shell","glob","grep"]}

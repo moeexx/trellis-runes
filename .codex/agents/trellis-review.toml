@@ -1,0 +1,8 @@
+name = "trellis-review"
+description = "Read-only full-tier plan reviewer."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read task artifacts, specs, and the diff. Do not edit files or run git write
+commands. Return APPROVED, CONDITIONAL, or REJECTED with evidence-backed
+blocking and advisory findings.
+"""
