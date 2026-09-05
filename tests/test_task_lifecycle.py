@@ -318,6 +318,20 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue((self.task_dir / "baseline/before.json").is_file())
 
+    def test_idempotent_start_does_not_refreeze_evidence_hash(self) -> None:
+        task_json = self.write_task(status="in_progress")
+        self.write_prd()
+        plan = self.task_dir / "test-plan-unit.md"
+        plan.write_text("old", encoding="utf-8")
+        data = json.loads(task_json.read_text(encoding="utf-8"))
+        data["meta"] = {"evidence_gates_version": "1", "evidence_test_level": "unit", "test_plan_sha256": {"test-plan-unit.md": "frozen"}}
+        task_json.write_text(json.dumps(data), encoding="utf-8")
+        with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
+            task, "resolve_task_dir", return_value=self.task_dir
+        ), patch.object(task, "resolve_context_key", return_value=None), patch.object(task, "run_task_hooks"):
+            self.assertEqual(task.cmd_start(self.start_args()), 0)
+        self.assertEqual(json.loads(task_json.read_text(encoding="utf-8"))["meta"]["test_plan_sha256"]["test-plan-unit.md"], "frozen")
+
 
 if __name__ == "__main__":
     unittest.main()

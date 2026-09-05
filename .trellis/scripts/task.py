@@ -111,12 +111,13 @@ def _record_start_state(
 
     applied: list[str] = []
 
-    if data.get("status") == "planning":
+    transitioned = data.get("status") == "planning"
+    if transitioned:
         data["status"] = "in_progress"
         applied.append(f"✓ Status: planning → in_progress{label}")
 
     meta = data.get("meta")
-    if isinstance(meta, dict) and meta.get("evidence_gates_version") == "1":
+    if transitioned and isinstance(meta, dict) and meta.get("evidence_gates_version") == "1":
         level = meta.get("evidence_test_level")
         required = ["test-plan-unit.md"] if level == "unit" else ["test-plan-unit.md", "test-plan-integration.md"]
         meta["test_plan_sha256"] = {name: hashlib.sha256((task_json_path.parent / name).read_bytes()).hexdigest() for name in required}
