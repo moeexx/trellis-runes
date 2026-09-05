@@ -50,9 +50,18 @@ archive       ──gate.require("task_archive", ...)─────────
       通过 -> 命令行继续执行状态变更
 ```
 
-`gate.require()` 只读：不修改 task.json、session 指针或 task 目录。**所有状态变更必须在 gate 通过之后进行**，且 gate 与变更之间不留其他副作用。
+gate 的 rule 求值只读：不修改 task.json、session 指针或业务状态。每次 `evaluate()` 完成后会 best-effort 追加一条 task-local `gate-result.jsonl` 投影；写入失败只输出 warning，不改变判定结果。**所有状态变更必须在 gate 通过之后进行**，且 gate 与变更之间不留其他业务副作用。
 
 `GateContext` 字段：`repo_root`、`task_dir`、`task_data`（可选，避免二次读取）、`policy_path`（测试用覆盖）、`metadata`。`policy_path` 缺省为 `<repo_root>/.trellis/gates.yaml`。
+
+## 审计账本（v1）
+
+每个 task 的审计文件均为 append-only JSONL，不参与 gate rule 判定：
+
+- `gate-result.jsonl`：每次 `evaluate()` 一行，字段为 `schema`、`ts`、`kind="gate-result"`、`task_id`、`gate_id`、`result` 与 `failed_rules`。`require()` 复用该结果打印失败，不会重复记录。`task_create` 发生在目录创建前，故只在 create 成功后向新 task 补记通过结果；失败 create 没有 task-local 文件。
+- `lifecycle-events.jsonl`：记录 start/archive 成功后的 `phase-transition`、`rollback record/reset`，以及由 `task.py audit <task> human-gate --kind <prd-confirmed|commit-confirmed|rollback-intervention> --detail <text>` 显式提交的 `human-gate`。
+
+自动路径（gate、状态转换、rollback）的审计 I/O 失败只 warning，不阻断原操作。显式 `audit` 命令的唯一职责是写入事件；写入失败时返回非零，供调用方重试。
 
 ## 添加新 gate
 
@@ -83,7 +92,7 @@ archive       ──gate.require("task_archive", ...)─────────
 
 - **保持 fail-closed**：未知 gate、未知规则、policy 解析失败、规则抛异常，都必须判失败，不得静默放行。新增 policy 分支时保持该语义。
 - **policy schema**：每个 gate 必须有非空 `require` 列表；`transition.to` 必填，`from` 非空（如存在），`idempotent` 只能是 `true` / `false` 且必须位于 transition 内。当前 parser 不支持的 YAML 语法也必须直接拒绝。
-- **规则必须纯函数**：不落盘、不改状态；`task_data` 缓存是唯一允许的可变副作用。求值中途抛异常由引擎兜底为 `rule_error` 失败。
+- **规则必须纯函数**：不落盘、不改状态；`task_data` 缓存是唯一允许的可变副作用。求值中途抛异常由引擎兜底为 `rule_error` 失败。求值完成后的 audit 投影不属于 rule，且始终 best-effort。
 - **不得新增绕过开关**：不要为 gate 加 `--skip-*` / `--allow-*` 之类 CLI flag。需要放行时，通过 `idempotent` 或调整规则语义在 policy 层解决，并同步 `docs/gates.md` 与 `workflow.md` 的说明。
 - **transition 一致**：改 `from` / `to` 前确认它仍准确描述命令实际执行的状态翻转；`idempotent: true` 仅用于"重跑已到 target 状态不报错"的语义（如 `task_start`）。`task_archive` 保持非幂等。
 - **archive 可重试**：状态写入后 mover 失败时，必须恢复原始 `in_progress` 状态；session pointer 只能在目录移动成功后清理，避免重试被 transition gate 拒绝。
