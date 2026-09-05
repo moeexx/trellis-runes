@@ -239,6 +239,21 @@ class PlatformParityTests(unittest.TestCase):
             for severity in ("P0", "P1", "P2"):
                 self.assertIn(severity, source)
 
+    def test_read_only_review_and_verify_agents_keep_verdicts(self) -> None:
+        expected = {"review": ("APPROVED", "CONDITIONAL", "REJECTED"), "verify": ("PASS", "FAIL")}
+        paths = {
+            "review": (".trellis/agents/review.md", ".claude/agents/trellis-review.md", ".qoder/agents/trellis-review.md", ".codex/agents/trellis-review.toml", ".kiro/agents/trellis-review.json"),
+            "verify": (".trellis/agents/verify.md", ".claude/agents/trellis-verify.md", ".qoder/agents/trellis-verify.md", ".codex/agents/trellis-verify.toml", ".kiro/agents/trellis-verify.json"),
+        }
+        for role, relatives in paths.items():
+            for relative in relatives:
+                with self.subTest(role=role, relative=relative):
+                    source = (ROOT / relative).read_text(encoding="utf-8")
+                    self.assertIn("read-only", source.lower())
+                    self.assertRegex(source, r"git\s+write")
+                    for verdict in expected[role]:
+                        self.assertIn(verdict, source)
+
     def assert_session_start_contract(
         self, contract: SessionStartContract, expected_imports: frozenset[str]
     ) -> None:
