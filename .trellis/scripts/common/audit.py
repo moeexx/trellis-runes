@@ -46,3 +46,17 @@ def record_gate_result(task_dir: Path, gate_id: str, failures: tuple[Any, ...]) 
             "failed_rules": [failure.rule for failure in failures],
         },
     )
+
+
+def record_lifecycle_event(
+    task_dir: Path, event_kind: str, **details: Any
+) -> bool:
+    """Project one lifecycle fact into its task-local event ledger."""
+    event = {
+        "schema": AUDIT_SCHEMA,
+        "ts": now(),
+        "kind": event_kind,
+        "task_id": task_dir.name,
+    }
+    event.update(details)
+    return append_event(task_dir, LIFECYCLE_EVENTS_FILE, event)

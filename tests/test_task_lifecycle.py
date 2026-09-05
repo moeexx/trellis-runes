@@ -155,6 +155,25 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertEqual(result, 0)
         data = json.loads(task_json.read_text(encoding="utf-8"))
         self.assertEqual(data["status"], "in_progress")
+        events = [
+            json.loads(line)
+            for line in (self.task_dir / "lifecycle-events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(events[-1]["kind"], "phase-transition")
+        self.assertEqual(events[-1]["from"], "planning")
+        self.assertEqual(events[-1]["to"], "in_progress")
+
+    def test_start_audit_write_failure_does_not_block_transition(self) -> None:
+        task_json = self.write_task()
+        self.write_prd()
+        with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
+            task, "resolve_task_dir", return_value=self.task_dir
+        ), patch.object(task, "resolve_context_key", return_value=None), patch.object(
+            task, "run_task_hooks"
+        ), patch.object(task.audit, "record_lifecycle_event", return_value=False):
+            result = task.cmd_start(self.start_args())
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(task_json.read_text(encoding="utf-8"))["status"], "in_progress")
 
     def test_invalid_context_start_leaves_planning_status(self) -> None:
         task_json = self.write_task()
@@ -213,6 +232,87 @@ class TaskLifecycleTests(unittest.TestCase):
         self.assertEqual(len(archived), 1)
         data = json.loads(archived[0].read_text(encoding="utf-8"))
         self.assertEqual(data["status"], "completed")
+        events = [
+            json.loads(line)
+            for line in (archived[0].parent / "lifecycle-events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(events[-1]["kind"], "phase-transition")
+        self.assertEqual(events[-1]["from"], "in_progress")
+        self.assertEqual(events[-1]["to"], "completed")
+
+    def test_rollback_and_human_gate_events(self) -> None:
+        self.write_task(status="in_progress")
+        with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
+            task, "resolve_task_dir", return_value=self.task_dir
+        ):
+            rollback_result = task.cmd_rollback(
+                Namespace(dir=str(self.task_dir), rollback_action="record", phase="check")
+            )
+            reset_result = task.cmd_rollback(
+                Namespace(
+                    dir=str(self.task_dir),
+                    rollback_action="reset",
+                    intervention="reviewed the failed check manually",
+                )
+            )
+            audit_result = task.cmd_audit(
+                Namespace(
+                    dir=str(self.task_dir),
+                    audit_action="human-gate",
+                    kind="commit-confirmed",
+                    detail="developer approved commit plan",
+                )
+            )
+        self.assertEqual(rollback_result, 0)
+        self.assertEqual(reset_result, 0)
+        self.assertEqual(audit_result, 0)
+        events = [
+            json.loads(line)
+            for line in (self.task_dir / "lifecycle-events.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(events[0]["kind"], "rollback")
+        self.assertEqual(events[0]["count"], 1)
+        self.assertEqual(events[1]["kind"], "rollback")
+        self.assertEqual(events[1]["action"], "reset")
+        self.assertEqual(events[2]["kind"], "human-gate")
+        self.assertEqual(events[2]["gate_kind"], "commit-confirmed")
+
+    def test_human_gate_rejects_invalid_input_and_write_failure(self) -> None:
+        self.write_task(status="in_progress")
+        base = {
+            "dir": str(self.task_dir),
+            "audit_action": "human-gate",
+            "kind": "unknown",
+            "detail": "detail",
+        }
+        with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
+            task, "resolve_task_dir", return_value=self.task_dir
+        ):
+            self.assertNotEqual(task.cmd_audit(Namespace(**base)), 0)
+            base["kind"] = "prd-confirmed"
+            base["detail"] = " "
+            self.assertNotEqual(task.cmd_audit(Namespace(**base)), 0)
+            base["detail"] = "approved"
+            with patch.object(task.audit, "record_lifecycle_event", return_value=False):
+                self.assertNotEqual(task.cmd_audit(Namespace(**base)), 0)
+
+    def test_audit_cli_parses_human_gate_arguments(self) -> None:
+        with patch.object(task, "cmd_audit", return_value=0) as cmd_audit, patch.object(
+            sys,
+            "argv",
+            [
+                "task.py",
+                "audit",
+                "example",
+                "human-gate",
+                "--kind",
+                "prd-confirmed",
+                "--detail",
+                "developer approved PRD",
+            ],
+        ):
+            self.assertEqual(task.main(), 0)
+        self.assertEqual(cmd_audit.call_args.args[0].kind, "prd-confirmed")
 
     def test_archive_child_write_failure_can_be_retried(self) -> None:
         parent_json = self.write_task(status="in_progress")

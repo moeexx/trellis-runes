@@ -77,6 +77,12 @@ from common.task_context import (
     cmd_list_context,
 )
 from common import evidence
+from common import audit
+
+
+HUMAN_GATE_KINDS = frozenset(
+    {"prd-confirmed", "commit-confirmed", "rollback-intervention"}
+)
 
 
 # =============================================================================
@@ -155,6 +161,13 @@ def _record_start_state(
             file=sys.stderr,
         )
         return False
+
+    if transitioned:
+        audit.record_lifecycle_event(
+            task_json_path.parent,
+            "phase-transition",
+            **{"from": "planning", "to": "in_progress"},
+        )
 
     for line in applied:
         print(colored(line, Colors.GREEN))
@@ -327,10 +340,23 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     try:
         if args.rollback_action == "record":
             state = evidence.rollback_record(task_dir, args.phase)
+            audit.record_lifecycle_event(
+                task_dir,
+                "rollback",
+                action="record",
+                phase=state["phase"],
+                count=state["count"],
+            )
             print(colored(f"Rollback recorded: {state['phase']} #{state['count']}", Colors.YELLOW))
             return 1 if state["count"] >= 3 else 0
         if args.rollback_action == "reset":
             evidence.rollback_reset(task_dir, args.intervention)
+            audit.record_lifecycle_event(
+                task_dir,
+                "rollback",
+                action="reset",
+                intervention=args.intervention.strip(),
+            )
             print(colored("✓ Rollback circuit reset", Colors.GREEN))
             return 0
         evidence.rollback_not_tripped(task_dir)
@@ -339,6 +365,42 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     except evidence.EvidenceError as exc:
         print(colored(f"Error: {exc}", Colors.RED), file=sys.stderr)
         return 1
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Record a user-confirmed workflow decision for one task."""
+    repo_root = get_repo_root()
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if task_dir is None:
+        return 1
+
+    if args.audit_action != "human-gate":
+        print(colored("Error: unsupported audit action", Colors.RED), file=sys.stderr)
+        return 1
+    if args.kind not in HUMAN_GATE_KINDS:
+        print(
+            colored(
+                "Error: human-gate kind must be prd-confirmed, commit-confirmed, "
+                "or rollback-intervention",
+                Colors.RED,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    detail = args.detail.strip()
+    if not detail:
+        print(colored("Error: human-gate detail is required", Colors.RED), file=sys.stderr)
+        return 1
+    if not audit.record_lifecycle_event(
+        task_dir,
+        "human-gate",
+        gate_kind=args.kind,
+        detail=detail,
+    ):
+        print(colored("Error: human-gate audit record was not written", Colors.RED), file=sys.stderr)
+        return 1
+    print(colored("✓ Human-gate audit event recorded", Colors.GREEN))
+    return 0
 
 
 def cmd_current(args: argparse.Namespace) -> int:
@@ -754,6 +816,13 @@ def main() -> int:
     rollback_actions.add_parser("status")
     p_reset = rollback_actions.add_parser("reset")
     p_reset.add_argument("--intervention", required=True)
+
+    p_audit = subparsers.add_parser("audit", help="Record task audit events")
+    p_audit.add_argument("dir", help="Task directory")
+    audit_actions = p_audit.add_subparsers(dest="audit_action", required=True)
+    p_human_gate = audit_actions.add_parser("human-gate", help="Record a human confirmation")
+    p_human_gate.add_argument("--kind", required=True)
+    p_human_gate.add_argument("--detail", required=True)
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
     p_current.add_argument("--source", action="store_true",
@@ -835,6 +904,7 @@ def main() -> int:
         "baseline": cmd_baseline,
         "finding": cmd_finding,
         "rollback": cmd_rollback,
+        "audit": cmd_audit,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,

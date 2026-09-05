@@ -1276,6 +1276,11 @@ def cmd_archive(args: argparse.Namespace) -> int:
         clear_task_from_sessions(str(task_dir), repo_root)
 
         archive_dest = Path(result["archived_to"])
+        audit.record_lifecycle_event(
+            archive_dest,
+            "phase-transition",
+            **{"from": "in_progress", "to": "completed"},
+        )
         year_month = archive_dest.parent.name
         print(colored(f"Archived: {dir_name} -> archive/{year_month}/", Colors.GREEN), file=sys.stderr)
 
