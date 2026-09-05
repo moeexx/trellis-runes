@@ -309,6 +309,15 @@ class TaskLifecycleTests(unittest.TestCase):
             )
             self.assertNotEqual(completed.returncode, 0)
 
+    def test_baseline_cli_does_not_shadow_top_level_command(self) -> None:
+        self.write_task()
+        with patch.object(task, "get_repo_root", return_value=self.root), patch.object(
+            sys, "argv", ["task.py", "baseline", str(self.task_dir), "snapshot", "--phase", "before", "--command", "smoke=true"]
+        ):
+            result = task.main()
+        self.assertEqual(result, 0)
+        self.assertTrue((self.task_dir / "baseline/before.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

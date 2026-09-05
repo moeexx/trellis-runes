@@ -293,7 +293,7 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         return 1
     try:
         if args.baseline_action == "snapshot":
-            commands = evidence.parse_commands(args.command or [])
+            commands = evidence.parse_commands(args.baseline_commands or [])
             target = evidence.snapshot(task_dir, repo_root, args.phase, commands)
         else:
             target = evidence.diff(task_dir)
@@ -729,7 +729,7 @@ def main() -> int:
     baseline_actions = p_baseline.add_subparsers(dest="baseline_action", required=True)
     p_snapshot = baseline_actions.add_parser("snapshot", help="Run evidence commands")
     p_snapshot.add_argument("--phase", choices=("before", "after"), required=True)
-    p_snapshot.add_argument("--command", action="append", default=[], help="id=command (repeatable)")
+    p_snapshot.add_argument("--command", dest="baseline_commands", action="append", default=[], help="id=command (repeatable)")
     baseline_actions.add_parser("diff", help="Write new/known/resolved failures")
 
     p_finding = subparsers.add_parser("finding", help="Append a finding ledger event")
