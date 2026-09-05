@@ -107,6 +107,17 @@ Cursor instructions.
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("Step not found: 9.9", completed.stderr)
 
+    def test_canonical_steps_keep_auditable_execution_checkpoints(self) -> None:
+        with patch.object(workflow_phase, "get_repo_root", return_value=ROOT):
+            implementation = workflow_phase.get_step("2.1")
+            checking = workflow_phase.get_step("2.2")
+            rollback = workflow_phase.get_step("2.3")
+
+        self.assertIn("baseline/before.json", implementation)
+        self.assertIn("unit → API → E2E", checking)
+        self.assertIn("evidence_test_level = unit+api+e2e", checking)
+        self.assertIn("human-gate --kind rollback-intervention", rollback)
+
 
 if __name__ == "__main__":
     unittest.main()

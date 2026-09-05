@@ -46,6 +46,7 @@ python3 ./.trellis/scripts/task.py list [--mine] [--status <s>]
 python3 ./.trellis/scripts/task.py add-context <name> <action> <file> <reason>
 python3 ./.trellis/scripts/task.py list-context <name> [action]
 python3 ./.trellis/scripts/task.py validate <name>
+python3 ./.trellis/scripts/task.py audit <name> human-gate --kind <prd-confirmed|commit-confirmed|rollback-intervention> --detail "<confirmation>"
 
 # 元数据 / 层级 / PR
 python3 ./.trellis/scripts/task.py set-branch <name> <branch>
