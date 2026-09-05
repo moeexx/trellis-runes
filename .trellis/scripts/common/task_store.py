@@ -43,6 +43,7 @@ from .git import (
 from .io import describe_json_read_failure, read_json_checked, write_json
 from .gate import GateContext
 from . import gate
+from . import audit
 from .log import Colors, colored
 from .paths import (
     DEVELOPER_HINT,
@@ -353,10 +354,15 @@ def cmd_create(args: argparse.Namespace) -> int:
 
     # The create gate must run before ensure_tasks_dir, the first filesystem
     # mutation in this command. Its task_dir is an unused root placeholder.
-    if not gate.require(
+    create_gate = gate.require(
         "task_create",
-        GateContext(repo_root=repo_root, task_dir=get_tasks_dir(repo_root)),
-    ):
+        GateContext(
+            repo_root=repo_root,
+            task_dir=get_tasks_dir(repo_root),
+            audit_result=False,
+        ),
+    )
+    if not create_gate:
         return 1
 
     ensure_tasks_dir(repo_root)
@@ -654,6 +660,8 @@ def cmd_create(args: argparse.Namespace) -> int:
                                 colored("Warning: session activation failed (no pointer returned)", Colors.YELLOW),
                                 file=sys.stderr,
                             )
+
+    audit.record_gate_result(task_dir, "task_create", create_gate.failures)
 
     print(colored(f"Created task: {dir_name}", Colors.GREEN), file=sys.stderr)
     print("", file=sys.stderr)

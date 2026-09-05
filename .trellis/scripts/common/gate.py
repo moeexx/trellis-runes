@@ -23,6 +23,7 @@ from .trellis_config import parse_simple_yaml
 from .active_task import resolve_context_key
 from .workflow_activation import activation_entry
 from . import evidence
+from . import audit
 
 
 POLICY_FILE = "gates.yaml"
@@ -41,6 +42,7 @@ class GateContext:
     task_data: dict[str, Any] | None = None
     policy_path: Path | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    audit_result: bool = True
 
 
 @dataclass(frozen=True)
@@ -518,24 +520,22 @@ def evaluate(gate_id: str, ctx: GateContext) -> GateResult:
     try:
         policy = _load_policy(ctx)
     except _PolicyError as exc:
-        return GateResult(
-            gate=gate_id,
-            failures=(
-                GateFailure(
-                    rule="policy",
-                    code="malformed_policy",
-                    message=str(exc),
-                    details={"path": str(_policy_path(ctx))},
-                ),
+        return _complete_evaluation(gate_id, ctx, (
+            GateFailure(
+                rule="policy",
+                code="malformed_policy",
+                message=str(exc),
+                details={"path": str(_policy_path(ctx))},
             ),
-        )
+        ))
 
     gates = policy["gates"]
     spec = gates.get(gate_id)
     if not isinstance(spec, dict):
-        return GateResult(
-            gate=gate_id,
-            failures=(
+        return _complete_evaluation(
+            gate_id,
+            ctx,
+            (
                 GateFailure(
                     rule="policy",
                     code="unknown_gate",
@@ -579,7 +579,17 @@ def evaluate(gate_id: str, ctx: GateContext) -> GateResult:
         else:
             failures.extend(failure)
 
-    return GateResult(gate=gate_id, failures=tuple(failures))
+    return _complete_evaluation(gate_id, ctx, tuple(failures))
+
+
+def _complete_evaluation(
+    gate_id: str, ctx: GateContext, failures: tuple[GateFailure, ...]
+) -> GateResult:
+    """Build and, when applicable, audit one completed gate evaluation."""
+    result = GateResult(gate=gate_id, failures=failures)
+    if ctx.audit_result:
+        audit.record_gate_result(ctx.task_dir, gate_id, result.failures)
+    return result
 
 
 def _render_failure(failure: GateFailure) -> list[str]:

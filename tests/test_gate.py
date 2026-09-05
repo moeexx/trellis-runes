@@ -67,6 +67,29 @@ class GateEngineTests(unittest.TestCase):
         result = gate.evaluate("task_start", self.context())
         self.assertTrue(result.ok)
 
+    def test_evaluate_writes_one_gate_result_with_failure_rules(self) -> None:
+        self.write_task()
+        result = gate.evaluate("task_start", self.context())
+        self.assertFalse(result.ok)
+
+        rows = [
+            json.loads(line)
+            for line in (self.task / "gate-result.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["kind"], "gate-result")
+        self.assertEqual(rows[0]["task_id"], self.task.name)
+        self.assertEqual(rows[0]["gate_id"], "task_start")
+        self.assertEqual(rows[0]["result"], "fail")
+        self.assertEqual(rows[0]["failed_rules"], ["planning_artifacts_ready"])
+
+    def test_audit_write_failure_does_not_change_gate_result(self) -> None:
+        self.write_task()
+        with patch.object(gate.audit, "record_gate_result", return_value=False):
+            result = gate.evaluate("task_start", self.context())
+        self.assertFalse(result.ok)
+        self.assertEqual(result.failures[0].rule, "planning_artifacts_ready")
+
     def write_activation(self, entry: str) -> None:
         marker = self.workflow / ".runtime" / "workflow-activations" / "test-session.json"
         marker.parent.mkdir(parents=True, exist_ok=True)

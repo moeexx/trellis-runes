@@ -134,7 +134,14 @@ class TaskLifecycleTests(unittest.TestCase):
         ), patch.object(task_store, "resolve_default_branch", return_value="main"):
             created = task_store.cmd_create(self.create_args())
         self.assertEqual(created, 0)
-        self.assertEqual(len(list((create_workflow / "tasks").glob("*-new-task/task.json"))), 1)
+        task_json = next((create_workflow / "tasks").glob("*-new-task/task.json"))
+        self.assertTrue(task_json.is_file())
+        gate_rows = [
+            json.loads(line)
+            for line in (task_json.parent / "gate-result.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(gate_rows[-1]["gate_id"], "task_create")
+        self.assertEqual(gate_rows[-1]["result"], "pass")
 
     def test_valid_start_transitions_to_in_progress(self) -> None:
         task_json = self.write_task()
